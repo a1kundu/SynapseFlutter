@@ -20,16 +20,21 @@ class LlmApiClient {
 
     final modelsUrl = isGitHub ? '$baseUrl/catalog/models' : '$baseUrl/models';
 
-    // GitHub catalog is a public endpoint — only needs auth for inference.
-    // Sending Accept: application/vnd.github+json to models.github.ai causes
-    // ClientException on some Android devices.
     final headers = isGitHub
         ? <String, String>{'Authorization': 'Bearer $apiKey'}
         : _buildHeaders(apiKey, provider);
 
-    final response = await _client
-        .get(Uri.parse(modelsUrl), headers: headers)
-        .timeout(const Duration(seconds: 30));
+    http.Response response;
+    try {
+      response = await _client
+          .get(Uri.parse(modelsUrl), headers: headers)
+          .timeout(const Duration(seconds: 30));
+    } catch (e) {
+      // On Flutter web, the catalog endpoint is blocked by CORS.
+      // Fall back to a curated list of known GitHub Models.
+      if (isGitHub) return _fallbackGitHubModels();
+      rethrow;
+    }
 
     if (response.statusCode != 200) {
       final errorMsg = _parseError(response.body, response.statusCode);
@@ -46,9 +51,12 @@ class LlmApiClient {
         catalogModels = decoded.cast<Map<String, dynamic>>();
       } else if (decoded is Map<String, dynamic>) {
         // Handle wrapped response: {"value": [...]} or {"models": [...]} or {"data": [...]}
-        final list = (decoded['value'] ?? decoded['models'] ?? decoded['data']) as List?;
+        final list =
+            (decoded['value'] ?? decoded['models'] ?? decoded['data']) as List?;
         if (list == null || list.isEmpty) {
-          throw Exception('Unexpected GitHub Models response format: ${body.substring(0, (body.length).clamp(0, 200))}');
+          throw Exception(
+            'Unexpected GitHub Models response format: ${body.substring(0, (body.length).clamp(0, 200))}',
+          );
         }
         catalogModels = list.cast<Map<String, dynamic>>();
       } else {
@@ -56,7 +64,9 @@ class LlmApiClient {
       }
       return catalogModels
           .where((m) {
-            final outputs = (m['supported_output_modalities'] as List?)?.cast<String>() ?? [];
+            final outputs =
+                (m['supported_output_modalities'] as List?)?.cast<String>() ??
+                [];
             return outputs.contains('text');
           })
           .map((m) {
@@ -73,10 +83,15 @@ class LlmApiClient {
             );
           })
           .toList()
-        ..sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+        ..sort(
+          (a, b) => a.displayName.toLowerCase().compareTo(
+            b.displayName.toLowerCase(),
+          ),
+        );
     } else {
       final modelsResponse = jsonDecode(body) as Map<String, dynamic>;
-      final data = (modelsResponse['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final data =
+          (modelsResponse['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       return data
           .where((info) {
             final id = (info['id'] as String).toLowerCase();
@@ -88,13 +103,19 @@ class LlmApiClient {
                 !id.contains('babbage') &&
                 !id.contains('moderation');
           })
-          .map((info) => LlmModel(
-            id: info['id'] as String,
-            displayName: _formatModelName(info['id'] as String),
-            provider: _formatProvider(info['owned_by'] as String? ?? ''),
-          ))
+          .map(
+            (info) => LlmModel(
+              id: info['id'] as String,
+              displayName: _formatModelName(info['id'] as String),
+              provider: _formatProvider(info['owned_by'] as String? ?? ''),
+            ),
+          )
           .toList()
-        ..sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+        ..sort(
+          (a, b) => a.displayName.toLowerCase().compareTo(
+            b.displayName.toLowerCase(),
+          ),
+        );
     }
   }
 
@@ -158,7 +179,8 @@ class LlmApiClient {
 
         try {
           final chunk = jsonDecode(data) as Map<String, dynamic>;
-          final choices = (chunk['choices'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+          final choices =
+              (chunk['choices'] as List?)?.cast<Map<String, dynamic>>() ?? [];
           if (choices.isEmpty) continue;
           final choice = choices.first;
 
@@ -171,17 +193,22 @@ class LlmApiClient {
             }
 
             // Accumulate tool call deltas
-            final tcDeltas = (delta['tool_calls'] as List?)?.cast<Map<String, dynamic>>();
+            final tcDeltas = (delta['tool_calls'] as List?)
+                ?.cast<Map<String, dynamic>>();
             if (tcDeltas != null) {
               for (final tcd in tcDeltas) {
                 final index = tcd['index'] as int? ?? 0;
-                final tc = toolCallMap.putIfAbsent(index, () => _MutableToolCall());
+                final tc = toolCallMap.putIfAbsent(
+                  index,
+                  () => _MutableToolCall(),
+                );
                 if (tcd['id'] != null) tc.id = tcd['id'] as String;
                 if (tcd['type'] != null) tc.type = tcd['type'] as String;
                 final fn = tcd['function'] as Map<String, dynamic>?;
                 if (fn != null) {
                   if (fn['name'] != null) tc.name += fn['name'] as String;
-                  if (fn['arguments'] != null) tc.arguments += fn['arguments'] as String;
+                  if (fn['arguments'] != null)
+                    tc.arguments += fn['arguments'] as String;
                 }
               }
             }
@@ -192,9 +219,12 @@ class LlmApiClient {
           if (message != null) {
             final c = message['content'] as String?;
             if (c != null && c.isNotEmpty) yield TokenEvent(c);
-            final tcs = (message['tool_calls'] as List?)?.cast<Map<String, dynamic>>();
+            final tcs = (message['tool_calls'] as List?)
+                ?.cast<Map<String, dynamic>>();
             if (tcs != null && tcs.isNotEmpty) {
-              yield DoneEvent(tcs.map((t) => ToolCallInfo.fromJson(t)).toList());
+              yield DoneEvent(
+                tcs.map((t) => ToolCallInfo.fromJson(t)).toList(),
+              );
               doneEmitted = true;
             }
           }
@@ -207,14 +237,18 @@ class LlmApiClient {
         final finalToolCalls = toolCallMap.entries.toList()
           ..sort((a, b) => a.key.compareTo(b.key));
         yield DoneEvent(
-          finalToolCalls.map((e) => ToolCallInfo(
-            id: e.value.id,
-            type: e.value.type,
-            function: ToolCallFunctionInfo(
-              name: e.value.name,
-              arguments: e.value.arguments,
-            ),
-          )).toList(),
+          finalToolCalls
+              .map(
+                (e) => ToolCallInfo(
+                  id: e.value.id,
+                  type: e.value.type,
+                  function: ToolCallFunctionInfo(
+                    name: e.value.name,
+                    arguments: e.value.arguments,
+                  ),
+                ),
+              )
+              .toList(),
         );
       }
     } catch (e) {
@@ -224,9 +258,7 @@ class LlmApiClient {
 
   /// Build headers for inference/chat endpoints (NOT catalog).
   Map<String, String> _buildHeaders(String apiKey, LlmProvider provider) {
-    final headers = <String, String>{
-      'Authorization': 'Bearer $apiKey',
-    };
+    final headers = <String, String>{'Authorization': 'Bearer $apiKey'};
     switch (provider) {
       case LlmProvider.openRouter:
         headers['HTTP-Referer'] = 'https://synapse.arijitk.in';
@@ -259,13 +291,18 @@ class LlmApiClient {
   }
 
   String _formatModelName(String id) {
-    return id.split('/').last.split(RegExp(r'[-_]')).map((part) {
-      if (RegExp(r'^[\d.]+$').hasMatch(part)) return part;
-      if (part.length <= 3 && RegExp(r'^[a-zA-Z0-9]+$').hasMatch(part)) {
-        return part.toUpperCase();
-      }
-      return part[0].toUpperCase() + part.substring(1);
-    }).join(' ');
+    return id
+        .split('/')
+        .last
+        .split(RegExp(r'[-_]'))
+        .map((part) {
+          if (RegExp(r'^[\d.]+$').hasMatch(part)) return part;
+          if (part.length <= 3 && RegExp(r'^[a-zA-Z0-9]+$').hasMatch(part)) {
+            return part.toUpperCase();
+          }
+          return part[0].toUpperCase() + part.substring(1);
+        })
+        .join(' ');
   }
 
   String _formatProvider(String ownedBy) {
@@ -278,6 +315,111 @@ class LlmApiClient {
     if (lower.contains('mistral')) return 'Mistral';
     if (lower.contains('github')) return 'GitHub';
     return ownedBy[0].toUpperCase() + ownedBy.substring(1);
+  }
+
+  /// Curated fallback list used when the catalog endpoint is unreachable
+  /// (e.g. CORS on Flutter web).
+  static List<LlmModel> _fallbackGitHubModels() {
+    const models = <LlmModel>[
+      LlmModel(
+        id: 'openai/gpt-4.1',
+        displayName: 'GPT-4.1',
+        provider: 'OpenAI',
+      ),
+      LlmModel(
+        id: 'openai/gpt-4.1-mini',
+        displayName: 'GPT-4.1 Mini',
+        provider: 'OpenAI',
+      ),
+      LlmModel(
+        id: 'openai/gpt-4.1-nano',
+        displayName: 'GPT-4.1 Nano',
+        provider: 'OpenAI',
+      ),
+      LlmModel(id: 'openai/gpt-4o', displayName: 'GPT-4o', provider: 'OpenAI'),
+      LlmModel(
+        id: 'openai/gpt-4o-mini',
+        displayName: 'GPT-4o Mini',
+        provider: 'OpenAI',
+      ),
+      LlmModel(
+        id: 'openai/o4-mini',
+        displayName: 'o4-mini',
+        provider: 'OpenAI',
+      ),
+      LlmModel(id: 'openai/o3', displayName: 'o3', provider: 'OpenAI'),
+      LlmModel(
+        id: 'openai/o3-mini',
+        displayName: 'o3-mini',
+        provider: 'OpenAI',
+      ),
+      LlmModel(id: 'openai/o1', displayName: 'o1', provider: 'OpenAI'),
+      LlmModel(
+        id: 'openai/o1-mini',
+        displayName: 'o1-mini',
+        provider: 'OpenAI',
+      ),
+      LlmModel(
+        id: 'meta/llama-4-maverick',
+        displayName: 'Llama 4 Maverick',
+        provider: 'Meta',
+      ),
+      LlmModel(
+        id: 'meta/llama-4-scout',
+        displayName: 'Llama 4 Scout',
+        provider: 'Meta',
+      ),
+      LlmModel(
+        id: 'meta/llama-3.3-70b-instruct',
+        displayName: 'Llama 3.3 70B',
+        provider: 'Meta',
+      ),
+      LlmModel(
+        id: 'mistral-ai/mistral-large-2411',
+        displayName: 'Mistral Large',
+        provider: 'Mistral',
+      ),
+      LlmModel(
+        id: 'mistral-ai/mistral-small',
+        displayName: 'Mistral Small',
+        provider: 'Mistral',
+      ),
+      LlmModel(
+        id: 'deepseek/DeepSeek-R1',
+        displayName: 'DeepSeek R1',
+        provider: 'DeepSeek',
+      ),
+      LlmModel(
+        id: 'deepseek/DeepSeek-V3-0324',
+        displayName: 'DeepSeek V3',
+        provider: 'DeepSeek',
+      ),
+      LlmModel(
+        id: 'cohere/cohere-command-a',
+        displayName: 'Command A',
+        provider: 'Cohere',
+      ),
+      LlmModel(id: 'xai/grok-3', displayName: 'Grok 3', provider: 'xAI'),
+      LlmModel(
+        id: 'xai/grok-3-mini',
+        displayName: 'Grok 3 Mini',
+        provider: 'xAI',
+      ),
+      LlmModel(
+        id: 'microsoft/phi-4',
+        displayName: 'Phi-4',
+        provider: 'Microsoft',
+      ),
+      LlmModel(
+        id: 'microsoft/mai-ds-r1',
+        displayName: 'MAI-DS-R1',
+        provider: 'Microsoft',
+      ),
+    ];
+    return models.toList()..sort(
+      (a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+    );
   }
 }
 

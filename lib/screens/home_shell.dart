@@ -198,6 +198,21 @@ AppBar _buildAppBar(
         error: controller.modelFetchError,
       ),
       const SizedBox(width: 8),
+      Container(
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        child: IconButton(
+          icon: const Icon(Icons.add, size: 20),
+          tooltip: 'New Chat',
+          onPressed: controller.createNewChat,
+        ),
+      ),
     ],
   );
 }
@@ -257,28 +272,6 @@ class _ChatHistoryPanel extends StatelessWidget {
                     tooltip: 'Settings',
                   ),
                 ],
-              ),
-            ),
-          ),
-
-          // New Chat button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  controller.createNewChat();
-                  if (isDrawer) Navigator.of(context).pop();
-                },
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('New Chat'),
-                style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
               ),
             ),
           ),

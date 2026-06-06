@@ -48,7 +48,7 @@ class ChatController extends ChangeNotifier {
 
   /// Tools that are currently active (enabled and available).
   List<McpServerTool> get activeTools {
-    if (!_hasExplicitToolSelection || enabledToolNames.isEmpty) {
+    if (!_hasExplicitToolSelection) {
       return mcpTools.toList();
     }
     return mcpTools.where((t) => enabledToolNames.contains(t.tool.name)).toList();

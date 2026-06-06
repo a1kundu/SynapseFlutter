@@ -152,7 +152,6 @@ AppBar _buildAppBar(
   VoidCallback onOpenSettings, {
   bool showMenuButton = false,
 }) {
-  final cs = Theme.of(context).colorScheme;
   return AppBar(
     toolbarHeight: 64,
     leading: showMenuButton
@@ -199,21 +198,6 @@ AppBar _buildAppBar(
         error: controller.modelFetchError,
       ),
       const SizedBox(width: 8),
-      Container(
-        margin: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-        child: IconButton(
-          icon: const Icon(Icons.settings_rounded, size: 20),
-          tooltip: 'Settings',
-          onPressed: onOpenSettings,
-        ),
-      ),
     ],
   );
 }

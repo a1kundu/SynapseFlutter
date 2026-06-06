@@ -1,4 +1,4 @@
-package com.example.office_aschi_flutter
+package in.arijitk.synapse
 
 import io.flutter.embedding.android.FlutterActivity
 

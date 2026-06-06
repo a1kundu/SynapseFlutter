@@ -79,7 +79,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
             const SizedBox(width: 12),
             Text(
-              'OfficeAschi',
+              'Synapse',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.3,

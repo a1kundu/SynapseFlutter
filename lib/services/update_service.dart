@@ -42,7 +42,7 @@ class AppUpdate {
 
 class UpdateService {
   static const _owner = 'arklnd';
-  static const _repo = 'OfficeAschiFlutter';
+  static const _repo = 'synapse';
   static const _autoUpdateKey = 'autoUpdateCheck';
 
   static String get channel => kDebugMode ? 'debug' : 'release';
@@ -129,7 +129,7 @@ class UpdateService {
   }
 
   static String apkFileName(AppUpdate update) {
-    return 'office-aschi-flutter-$channel-${update.version}.apk';
+    return 'synapse-$channel-${update.version}.apk';
   }
 
   static Future<Directory> _downloadDir() async {
@@ -285,7 +285,7 @@ class UpdateService {
     String currentName,
   ) async {
     final deleted = <String>[];
-    final prefix = 'office-aschi-flutter-$channel-';
+    final prefix = 'synapse-$channel-';
     try {
       await for (final entity in dir.list()) {
         if (entity is File) {

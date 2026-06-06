@@ -31,7 +31,7 @@ class TotpService {
 
   static String getOtpAuthUri(String base32Secret, String label) {
     final encodedLabel = Uri.encodeComponent(label);
-    return 'otpauth://totp/$encodedLabel?secret=$base32Secret&issuer=OfficeAschi&algorithm=SHA1&digits=6&period=30';
+    return 'otpauth://totp/$encodedLabel?secret=$base32Secret&issuer=Synapse&algorithm=SHA1&digits=6&period=30';
   }
 
   // SharedPreferences storage

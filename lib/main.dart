@@ -50,7 +50,7 @@ class MyApp extends StatelessWidget {
                     );
                 return MaterialApp(
                   navigatorKey: navigatorKey,
-                  title: 'Office Aschi',
+                  title: 'Synapse',
                   debugShowCheckedModeBanner: false,
                   themeMode: themeMode,
                   theme: buildAppTheme(lightScheme),

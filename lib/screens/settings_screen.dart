@@ -92,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'OfficeAschi',
+                          'Synapse',
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
@@ -202,14 +202,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ListTile(
                           leading: IconBox(icon: Icons.source, colorScheme: cs),
                           title: const Text('Source Code'),
-                          subtitle: const Text('arklnd/OfficeAschiFlutter'),
+                          subtitle: const Text('arklnd/synapse'),
                           trailing: Icon(
                             Icons.open_in_new,
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
                             Uri.parse(
-                              'https://github.com/arklnd/OfficeAschiFlutter',
+                              'https://github.com/arklnd/synapse',
                             ),
                             mode: LaunchMode.externalApplication,
                           ),
@@ -227,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           onTap: () => launchUrl(
                             Uri.parse(
-                              'https://github.com/arklnd/OfficeAschiFlutter/issues',
+                              'https://github.com/arklnd/synapse/issues',
                             ),
                             mode: LaunchMode.externalApplication,
                           ),
@@ -245,7 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           onTap: () => launchUrl(
                             Uri.parse(
-                              'https://github.com/arklnd/OfficeAschiFlutter/releases',
+                              'https://github.com/arklnd/synapse/releases',
                             ),
                             mode: LaunchMode.externalApplication,
                           ),

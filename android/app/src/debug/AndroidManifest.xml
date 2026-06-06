@@ -7,6 +7,6 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="OfficeAschi Debug"
+        android:label="Synapse Debug"
         tools:replace="android:label" />
 </manifest>

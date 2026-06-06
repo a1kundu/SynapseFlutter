@@ -1,0 +1,128 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_TYPE: ${{ inputs.build_type || 'debug' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get build metadata
+        id: vars
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_number=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+          cache-dependency-path: android/*.gradle*
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: beta
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Prepare build
+        id: changelog
+        run: |
+          # Stamp app version
+          VERSION="${{ steps.vars.outputs.build_number }}.0.0-${{ steps.vars.outputs.sha_short }}"
+          sed -i "s|APP_VERSION_PLACEHOLDER|${VERSION}|g" lib/version.dart
+
+          # Decode keystore & create key.properties
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=release-keystore.jks
+          EOF
+          sed -i 's/^[[:space:]]*//' android/key.properties
+
+          # Generate changelog
+          CH="${{ env.BUILD_TYPE }}"
+          PREV_TAG=$(git tag --list "v*-${CH}-*" --sort=-version:refname | head -n1)
+          if [ -n "$PREV_TAG" ]; then
+            echo "Previous ${CH} tag: $PREV_TAG"
+            LOG=$(git log --pretty=format:"• %s (%h)" "${PREV_TAG}..HEAD" -- . ':!build')
+          else
+            echo "No previous ${CH} tag found – using last 20 commits"
+            LOG=$(git log --pretty=format:"• %s (%h)" -20 -- . ':!build')
+          fi
+          {
+            echo "log<<CHANGELOG_EOF"
+            echo "$LOG"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build APK (${{ env.BUILD_TYPE }})
+        run: |
+          VERSION="${{ steps.vars.outputs.build_number }}.0.0-${{ steps.vars.outputs.sha_short }}"
+          BUILD_NUM="${{ steps.vars.outputs.build_number }}"
+          if [ "${{ env.BUILD_TYPE }}" = "release" ]; then
+            flutter build apk --release \
+              --build-name="$VERSION" --build-number="$BUILD_NUM" \
+              --no-pub \
+              --target-platform android-arm64
+          else
+            flutter build apk --debug \
+              --build-name="$VERSION" --build-number="$BUILD_NUM" \
+              --no-pub \
+              --no-tree-shake-icons
+          fi
+
+      - name: Rename APK
+        run: |
+          VERSION="${{ steps.vars.outputs.build_number }}.0.0-${{ steps.vars.outputs.sha_short }}"
+          if [ "${{ env.BUILD_TYPE }}" = "release" ]; then
+            mv build/app/outputs/flutter-apk/app-release.apk \
+               build/app/outputs/flutter-apk/synapse-${{ env.BUILD_TYPE }}-${VERSION}.apk
+          else
+            mv build/app/outputs/flutter-apk/app-debug.apk \
+               build/app/outputs/flutter-apk/synapse-${{ env.BUILD_TYPE }}-${VERSION}.apk
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.vars.outputs.build_number }}-${{ env.BUILD_TYPE }}-${{ steps.vars.outputs.sha_short }}
+          name: "Build #${{ steps.vars.outputs.build_number }} — Synapse (${{ env.BUILD_TYPE }})"
+          body: |
+            **${{ env.BUILD_TYPE }}** APK built from commit `${{ github.sha }}`
+            Version: `${{ steps.vars.outputs.build_number }}.0.0-${{ steps.vars.outputs.sha_short }}` (code: ${{ steps.vars.outputs.build_number }})
+            Branch: `${{ github.ref_name }}`
+            Triggered by: `${{ github.actor }}`
+
+            ### Changelog
+            ${{ steps.changelog.outputs.log }}
+          files: build/app/outputs/flutter-apk/synapse-${{ env.BUILD_TYPE }}-${{ steps.vars.outputs.build_number }}.0.0-${{ steps.vars.outputs.sha_short }}.apk

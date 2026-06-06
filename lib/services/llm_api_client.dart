@@ -6,20 +6,30 @@ import '../models/llm_models.dart';
 import '../settings/settings_repository.dart';
 
 class LlmApiClient {
+  final _client = http.Client();
 
   /// Fetch available models from the provider's endpoint.
   Future<List<LlmModel>> fetchModels() async {
     final settings = SettingsRepository.instance;
     final baseUrl = settings.resolvedBaseUrl;
     final apiKey = settings.llmApiKey;
-    final isGitHub = settings.llmProvider == LlmProvider.githubModels;
+    final provider = settings.llmProvider;
+    final isGitHub = provider == LlmProvider.githubModels;
 
     if (apiKey.isEmpty) throw Exception('API key not configured');
 
     final modelsUrl = isGitHub ? '$baseUrl/catalog/models' : '$baseUrl/models';
-    final headers = _buildHeaders(apiKey, settings.llmProvider);
 
-    final response = await http.get(Uri.parse(modelsUrl), headers: headers);
+    // GitHub catalog is a public endpoint — only needs auth for inference.
+    // Sending Accept: application/vnd.github+json to models.github.ai causes
+    // ClientException on some Android devices.
+    final headers = isGitHub
+        ? <String, String>{'Authorization': 'Bearer $apiKey'}
+        : _buildHeaders(apiKey, provider);
+
+    final response = await _client
+        .get(Uri.parse(modelsUrl), headers: headers)
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       final errorMsg = _parseError(response.body, response.statusCode);
@@ -29,7 +39,21 @@ class LlmApiClient {
     final body = response.body;
 
     if (isGitHub) {
-      final catalogModels = (jsonDecode(body) as List).cast<Map<String, dynamic>>();
+      // GitHub catalog can return a plain JSON array or an object with a list inside
+      final decoded = jsonDecode(body);
+      List<Map<String, dynamic>> catalogModels;
+      if (decoded is List) {
+        catalogModels = decoded.cast<Map<String, dynamic>>();
+      } else if (decoded is Map<String, dynamic>) {
+        // Handle wrapped response: {"value": [...]} or {"models": [...]} or {"data": [...]}
+        final list = (decoded['value'] ?? decoded['models'] ?? decoded['data']) as List?;
+        if (list == null || list.isEmpty) {
+          throw Exception('Unexpected GitHub Models response format: ${body.substring(0, (body.length).clamp(0, 200))}');
+        }
+        catalogModels = list.cast<Map<String, dynamic>>();
+      } else {
+        throw Exception('Unexpected GitHub Models response type');
+      }
       return catalogModels
           .where((m) {
             final outputs = (m['supported_output_modalities'] as List?)?.cast<String>() ?? [];
@@ -112,7 +136,7 @@ class LlmApiClient {
       request.headers.addAll(headers);
       request.body = jsonEncode(requestBody);
 
-      final streamedResponse = await http.Client().send(request);
+      final streamedResponse = await _client.send(request);
 
       if (streamedResponse.statusCode != 200) {
         final body = await streamedResponse.stream.bytesToString();
@@ -198,6 +222,7 @@ class LlmApiClient {
     }
   }
 
+  /// Build headers for inference/chat endpoints (NOT catalog).
   Map<String, String> _buildHeaders(String apiKey, LlmProvider provider) {
     final headers = <String, String>{
       'Authorization': 'Bearer $apiKey',

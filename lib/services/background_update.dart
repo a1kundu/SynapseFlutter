@@ -12,7 +12,6 @@ import 'update_service.dart';
 // ---------------------------------------------------------------------------
 
 const _taskName = 'backgroundUpdateCheck';
-const _taskUniqueName = 'in.arijitk.synapse.backgroundUpdateCheck';
 const _channelId = 'app_updates';
 const _channelName = 'App Updates';
 const _channelDescription = 'Notifications for available app updates';
@@ -79,13 +78,14 @@ void callbackDispatcher() {
 // ---------------------------------------------------------------------------
 
 class BackgroundUpdateManager {
+  static String get _taskUniqueName => kDebugMode
+      ? 'in.arijitk.synapse.debug.backgroundUpdateCheck'
+      : 'in.arijitk.synapse.backgroundUpdateCheck';
+
   /// Initialise the Workmanager plugin. Call once from [main].
   static Future<void> init() async {
     if (kIsWeb || !Platform.isAndroid) return;
-    await Workmanager().initialize(
-      callbackDispatcher,
-      isInDebugMode: kDebugMode,
-    );
+    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
   }
 
   /// Register (or re-register) a periodic background update check.

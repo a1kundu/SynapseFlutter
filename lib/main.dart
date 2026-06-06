@@ -19,9 +19,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SettingsRepository.instance.init();
   await loadThemePreferences();
-  await BackgroundUpdateManager.init();
-  await BackgroundUpdateManager.syncWithPreference();
-  await DownloadManager.instance.initNotifications();
+  try {
+    await BackgroundUpdateManager.init();
+    await BackgroundUpdateManager.syncWithPreference();
+    await DownloadManager.instance.initNotifications();
+  } catch (e, s) {
+    debugPrint('Non-critical init failed: $e\n$s');
+  }
   runApp(const MyApp());
 }
 
@@ -81,18 +85,23 @@ class MyApp extends StatelessWidget {
                           pageBuilder: (_, __, ___) => const SettingsScreen(),
                           transitionsBuilder: (_, animation, __, child) {
                             return SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(1, 0),
-                                end: Offset.zero,
-                              ).animate(CurvedAnimation(
-                                parent: animation,
-                                curve: Curves.easeInOut,
-                              )),
+                              position:
+                                  Tween<Offset>(
+                                    begin: const Offset(1, 0),
+                                    end: Offset.zero,
+                                  ).animate(
+                                    CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeInOut,
+                                    ),
+                                  ),
                               child: child,
                             );
                           },
                           transitionDuration: const Duration(milliseconds: 300),
-                          reverseTransitionDuration: const Duration(milliseconds: 300),
+                          reverseTransitionDuration: const Duration(
+                            milliseconds: 300,
+                          ),
                         );
                       }
                       return MaterialPageRoute(

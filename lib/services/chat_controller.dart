@@ -70,7 +70,8 @@ class ChatController extends ChangeNotifier {
       }
       modelFetchError = null;
     } catch (e) {
-      modelFetchError = e.toString();
+      final msg = e.toString();
+      modelFetchError = msg.startsWith('Exception: ') ? msg.substring(11) : msg;
     }
 
     isLoadingModels = false;

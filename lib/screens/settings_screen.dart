@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -23,6 +24,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoUpdate = true;
+  Timer? _modelRefreshDebounce;
 
   // LLM Provider state
   late LlmProvider _llmProvider;
@@ -47,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    _modelRefreshDebounce?.cancel();
     _apiKeyController.dispose();
     _serverUrlController.dispose();
     super.dispose();
@@ -101,14 +104,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         settings.llmServerUrl = '';
       }
     });
+    _refreshModelsIfConfigured();
   }
 
   void _onApiKeyChanged(String value) {
     SettingsRepository.instance.llmApiKey = value;
+    _refreshModelsIfConfigured();
   }
 
   void _onServerUrlChanged(String value) {
     SettingsRepository.instance.llmServerUrl = value;
+    _refreshModelsIfConfigured();
+  }
+
+  void _refreshModelsIfConfigured() {
+    _modelRefreshDebounce?.cancel();
+    _modelRefreshDebounce = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      if (!SettingsRepository.instance.isLlmConfigured) return;
+      try {
+        context.read<ChatController>().refreshModels();
+      } catch (_) {}
+    });
   }
 
   void _addMcpServer(McpServerConfig server) {

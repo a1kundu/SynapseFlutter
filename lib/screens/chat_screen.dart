@@ -181,6 +181,7 @@ class ModelSelectorChip extends StatefulWidget {
   final List<LlmModel> models;
   final bool isLoading;
   final VoidCallback onRefresh;
+  final String? error;
 
   const ModelSelectorChip({
     super.key,
@@ -189,6 +190,7 @@ class ModelSelectorChip extends StatefulWidget {
     required this.models,
     this.isLoading = false,
     required this.onRefresh,
+    this.error,
   });
 
   @override
@@ -240,6 +242,28 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ));
+        } else if (widget.error != null && widget.models.isEmpty) {
+          // Show error when no models loaded
+          items.add(PopupMenuItem<dynamic>(
+            enabled: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline, size: 16, color: cs.error),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.error!,
+                      style: TextStyle(fontSize: 12, color: cs.error),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           ));
@@ -311,6 +335,8 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
                   color: cs.onSurfaceVariant,
                 ),
               )
+            else if (widget.error != null && widget.models.isEmpty)
+              Icon(Icons.error_outline, size: 14, color: cs.error)
             else
               ClipRRect(
                 borderRadius: BorderRadius.circular(7),

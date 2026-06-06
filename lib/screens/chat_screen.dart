@@ -496,7 +496,7 @@ class _EmptyState extends StatelessWidget {
 
 // ── Message Bubble with Actions ─────────────────────────────────────────────
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final ValueChanged<String> onCopy;
   final ValueChanged<ChatMessage> onEdit;
@@ -512,8 +512,24 @@ class _MessageBubble extends StatelessWidget {
   });
 
   @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  bool _showActions = false;
+
+  void _toggleActions() {
+    if (widget.message.isStreaming || widget.isGenerating) return;
+    setState(() => _showActions = !_showActions);
+  }
+
+  void _dismissActions() {
+    if (_showActions) setState(() => _showActions = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isUser = message.role == MessageRole.user;
+    final isUser = widget.message.role == MessageRole.user;
     final cs = Theme.of(context).colorScheme;
 
     final bubbleColor =
@@ -521,172 +537,204 @@ class _MessageBubble extends StatelessWidget {
     final contentColor = isUser ? cs.onPrimaryContainer : cs.onSurface;
     final alignment =
         isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final actionColor = cs.onSurfaceVariant.withValues(alpha: 0.5);
-    final showActions = !message.isStreaming && !isGenerating;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Column(
-        crossAxisAlignment: alignment,
-        children: [
-          // Role label row with inline action icons
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isUser) ...[
-                  ClipOval(
-                    child: Image.asset(
-                      'assets/icons/app_icon.png',
-                      width: 14,
-                      height: 14,
+    return GestureDetector(
+      onLongPress: _toggleActions,
+      onTap: _dismissActions,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Column(
+          crossAxisAlignment: alignment,
+          children: [
+            // Role label
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isUser) ...[
+                    ClipOval(
+                      child: Image.asset(
+                        'assets/icons/app_icon.png',
+                        width: 14,
+                        height: 14,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    message.model?.displayName ?? 'Synapse',
-                    style:
-                        Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: cs.onSurfaceVariant
-                                  .withValues(alpha: 0.7),
-                            ),
-                  ),
-                ] else
-                  Text(
-                    'You',
-                    style:
-                        Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: cs.onSurfaceVariant
-                                  .withValues(alpha: 0.7),
-                            ),
-                  ),
-
-                // Inline action icons
-                if (showActions) ...[
-                  const SizedBox(width: 8),
-                  // Copy (assistant only — user can select text natively)
-                  if (!isUser)
-                    _InlineActionIcon(
-                      icon: Icons.copy_outlined,
-                      tooltip: 'Copy',
-                      color: actionColor,
-                      onTap: () => onCopy(message.content),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.message.model?.displayName ?? 'Synapse',
+                      style:
+                          Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant
+                                    .withValues(alpha: 0.7),
+                              ),
                     ),
-                  // Edit (user only)
-                  if (isUser)
-                    _InlineActionIcon(
-                      icon: Icons.edit_outlined,
-                      tooltip: 'Edit & resend',
-                      color: actionColor,
-                      onTap: () => onEdit(message),
+                  ] else
+                    Text(
+                      'You',
+                      style:
+                          Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant
+                                    .withValues(alpha: 0.7),
+                              ),
                     ),
-                  // Fork (both)
-                  _InlineActionIcon(
-                    icon: Icons.fork_right_outlined,
-                    tooltip: 'Fork from here',
-                    color: actionColor,
-                    onTap: () => onFork(message.id),
-                  ),
                 ],
-              ],
-            ),
-          ),
-
-          // Message bubble
-          Container(
-            constraints: BoxConstraints(
-              minWidth: 60,
-              maxWidth: isUser
-                  ? 340
-                  : MediaQuery.of(context).size.width * 0.85,
-            ),
-            decoration: BoxDecoration(
-              color: bubbleColor,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isUser ? 16 : 4),
-                bottomRight: Radius.circular(isUser ? 4 : 16),
               ),
             ),
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Attachments
-                if (message.attachments.isNotEmpty) ...[
-                  ...message.attachments.map(
-                    (a) =>
-                        _AttachmentChip(attachment: a, tint: contentColor),
-                  ),
-                  if (message.content.isNotEmpty)
-                    const SizedBox(height: 8),
-                ],
 
-                // Text content
-                if (message.content.isNotEmpty) ...[
-                  if (isUser || message.isStreaming)
-                    SelectableText(
-                      message.content,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: contentColor),
-                    )
-                  else
-                    _AssistantMarkdown(
-                      content: message.content,
-                      contentColor: contentColor,
+            // Message bubble
+            Container(
+              constraints: BoxConstraints(
+                minWidth: 60,
+                maxWidth: isUser
+                    ? 340
+                    : MediaQuery.of(context).size.width * 0.85,
+              ),
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isUser ? 16 : 4),
+                  bottomRight: Radius.circular(isUser ? 4 : 16),
+                ),
+                border: isUser
+                    ? null
+                    : Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.3),
+                        width: 0.5,
+                      ),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Attachments
+                  if (widget.message.attachments.isNotEmpty) ...[
+                    ...widget.message.attachments.map(
+                      (a) =>
+                          _AttachmentChip(attachment: a, tint: contentColor),
                     ),
-                ] else if (!message.isStreaming)
-                  Text(
-                    'Empty response',
-                    style:
-                        Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: contentColor.withValues(alpha: 0.5),
-                            ),
-                  ),
+                    if (widget.message.content.isNotEmpty)
+                      const SizedBox(height: 8),
+                  ],
 
-                // Streaming indicator
-                if (message.isStreaming) ...[
-                  const SizedBox(height: 4),
-                  _StreamingIndicator(tint: contentColor),
+                  // Text content
+                  if (widget.message.content.isNotEmpty) ...[
+                    if (isUser || widget.message.isStreaming)
+                      Text(
+                        widget.message.content,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: contentColor),
+                      )
+                    else
+                      _AssistantMarkdown(
+                        content: widget.message.content,
+                        contentColor: contentColor,
+                      ),
+                  ] else if (!widget.message.isStreaming)
+                    Text(
+                      'Empty response',
+                      style:
+                          Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: contentColor.withValues(alpha: 0.5),
+                              ),
+                    ),
+
+                  // Streaming indicator
+                  if (widget.message.isStreaming) ...[
+                    const SizedBox(height: 4),
+                    _StreamingIndicator(tint: contentColor),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+
+            // Action buttons (shown on long press)
+            if (_showActions)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ActionChip(
+                      icon: Icons.copy_outlined,
+                      label: 'Copy',
+                      onTap: () {
+                        widget.onCopy(widget.message.content);
+                        _dismissActions();
+                      },
+                    ),
+                    if (isUser)
+                      _ActionChip(
+                        icon: Icons.edit_outlined,
+                        label: 'Edit',
+                        onTap: () {
+                          widget.onEdit(widget.message);
+                          _dismissActions();
+                        },
+                      ),
+                    _ActionChip(
+                      icon: Icons.fork_right_outlined,
+                      label: 'Fork',
+                      onTap: () {
+                        widget.onFork(widget.message.id);
+                        _dismissActions();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Tiny inline icon button used in the role label row.
-class _InlineActionIcon extends StatelessWidget {
+/// Small action chip shown below the message bubble on long press.
+class _ActionChip extends StatelessWidget {
   final IconData icon;
-  final String tooltip;
-  final Color color;
+  final String label;
   final VoidCallback onTap;
 
-  const _InlineActionIcon({
+  const _ActionChip({
     required this.icon,
-    required this.tooltip,
-    required this.color,
+    required this.label,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Icon(icon, size: 14, color: color),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -708,7 +756,7 @@ class _AssistantMarkdown extends StatelessWidget {
 
     return MarkdownBody(
       data: content,
-      selectable: true,
+      selectable: false,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
         p: Theme.of(context)
@@ -836,10 +884,12 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
     Widget codeContent;
     if (isMermaid) {
       // Render Mermaid as an actual graph via mermaid.ink
-      final mermaidTheme = isDark ? 'dark' : 'default';
-      final encoded = base64Url.encode(utf8.encode(text));
-      final imageUrl =
-          'https://mermaid.ink/img/base64:$encoded?theme=$mermaidTheme';
+      // Inject theme directive into the diagram source for dark mode
+      final mermaidSource = isDark
+          ? '%%{init: {"theme":"dark"}}%%\n$text'
+          : text;
+      final encoded = base64.encode(utf8.encode(mermaidSource));
+      final imageUrl = 'https://mermaid.ink/img/$encoded';
       codeContent = Image.network(
         imageUrl,
         fit: BoxFit.contain,

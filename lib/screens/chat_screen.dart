@@ -533,20 +533,22 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final cs = Theme.of(context).colorScheme;
 
     final bubbleColor =
-        isUser ? cs.primaryContainer : cs.surfaceContainerHighest;
+        isUser ? cs.primaryContainer : cs.surfaceContainerLow;
     final contentColor = isUser ? cs.onPrimaryContainer : cs.onSurface;
     final alignment =
         isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
 
     return GestureDetector(
-      onLongPress: _toggleActions,
+      // Only intercept long press for user messages;
+      // assistant messages use selectable text so long press = selection.
+      onLongPress: isUser ? _toggleActions : null,
       onTap: _dismissActions,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: Column(
           crossAxisAlignment: alignment,
           children: [
-            // Role label
+            // Role label row
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -579,6 +581,28 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                     .withValues(alpha: 0.7),
                               ),
                     ),
+
+                  // Assistant: always-visible tiny copy & fork icons
+                  // (since long press = text selection, not action toggle)
+                  if (!isUser &&
+                      !widget.message.isStreaming &&
+                      !widget.isGenerating) ...[
+                    const SizedBox(width: 8),
+                    _TinyIconBtn(
+                      icon: Icons.copy_outlined,
+                      tooltip: 'Copy all',
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                      onTap: () =>
+                          widget.onCopy(widget.message.content),
+                    ),
+                    _TinyIconBtn(
+                      icon: Icons.fork_right_outlined,
+                      tooltip: 'Fork from here',
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                      onTap: () =>
+                          widget.onFork(widget.message.id),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -599,12 +623,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   bottomLeft: Radius.circular(isUser ? 16 : 4),
                   bottomRight: Radius.circular(isUser ? 4 : 16),
                 ),
-                border: isUser
-                    ? null
-                    : Border.all(
-                        color: cs.outlineVariant.withValues(alpha: 0.3),
-                        width: 0.5,
-                      ),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.4),
+                  width: 1,
+                ),
               ),
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -653,8 +675,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
               ),
             ),
 
-            // Action buttons (shown on long press)
-            if (_showActions)
+            // Action buttons for user messages (shown on long press)
+            if (_showActions && isUser)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Row(
@@ -668,15 +690,14 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         _dismissActions();
                       },
                     ),
-                    if (isUser)
-                      _ActionChip(
-                        icon: Icons.edit_outlined,
-                        label: 'Edit',
-                        onTap: () {
-                          widget.onEdit(widget.message);
-                          _dismissActions();
-                        },
-                      ),
+                    _ActionChip(
+                      icon: Icons.edit_outlined,
+                      label: 'Edit',
+                      onTap: () {
+                        widget.onEdit(widget.message);
+                        _dismissActions();
+                      },
+                    ),
                     _ActionChip(
                       icon: Icons.fork_right_outlined,
                       label: 'Fork',
@@ -689,6 +710,36 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tiny icon used in the assistant role label row.
+class _TinyIconBtn extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _TinyIconBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Icon(icon, size: 14, color: color),
         ),
       ),
     );
@@ -756,7 +807,7 @@ class _AssistantMarkdown extends StatelessWidget {
 
     return MarkdownBody(
       data: content,
-      selectable: false,
+      selectable: true,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
         p: Theme.of(context)

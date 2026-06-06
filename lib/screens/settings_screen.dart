@@ -1,8 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/llm_models.dart';
+import '../models/mcp_models.dart';
 import '../services/background_update.dart';
+import '../services/chat_controller.dart';
 import '../services/update_service.dart';
+import '../settings/settings_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/section_header.dart';
 import '../widgets/icon_box.dart';
@@ -19,10 +24,32 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoUpdate = true;
 
+  // LLM Provider state
+  late LlmProvider _llmProvider;
+  late TextEditingController _apiKeyController;
+  late TextEditingController _serverUrlController;
+  bool _showApiKey = false;
+
+  // MCP Servers state
+  late List<McpServerConfig> _mcpServers;
+
   @override
   void initState() {
     super.initState();
     _loadAutoUpdatePref();
+
+    final settings = SettingsRepository.instance;
+    _llmProvider = settings.llmProvider;
+    _apiKeyController = TextEditingController(text: settings.llmApiKey);
+    _serverUrlController = TextEditingController(text: settings.llmServerUrl);
+    _mcpServers = settings.mcpServers;
+  }
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    _serverUrlController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAutoUpdatePref() async {
@@ -58,6 +85,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SnackBar(content: Text('You\'re already on the latest version.')),
       );
     }
+  }
+
+  void _selectProvider(LlmProvider provider) {
+    final settings = SettingsRepository.instance;
+    setState(() {
+      _llmProvider = provider;
+      settings.llmProvider = provider;
+      // Reset server URL if it was the default of a different provider
+      if (_serverUrlController.text.isEmpty ||
+          LlmProvider.values
+              .where((p) => p != provider)
+              .any((p) => p.defaultBaseUrl == _serverUrlController.text)) {
+        _serverUrlController.clear();
+        settings.llmServerUrl = '';
+      }
+    });
+  }
+
+  void _onApiKeyChanged(String value) {
+    SettingsRepository.instance.llmApiKey = value;
+  }
+
+  void _onServerUrlChanged(String value) {
+    SettingsRepository.instance.llmServerUrl = value;
+  }
+
+  void _addMcpServer(McpServerConfig server) {
+    final settings = SettingsRepository.instance;
+    settings.addMcpServer(server);
+    setState(() {
+      _mcpServers = settings.mcpServers;
+    });
+    // Refresh MCP tools in the chat controller
+    try {
+      final chatController = context.read<ChatController>();
+      chatController.refreshMcpTools();
+    } catch (_) {}
+  }
+
+  void _removeMcpServer(String name) {
+    final settings = SettingsRepository.instance;
+    settings.removeMcpServer(name);
+    setState(() {
+      _mcpServers = settings.mcpServers;
+    });
+    // Refresh MCP tools in the chat controller
+    try {
+      final chatController = context.read<ChatController>();
+      chatController.refreshMcpTools();
+    } catch (_) {}
+  }
+
+  void _showAddMcpServerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _AddMcpServerDialog(
+        onAdd: (server) {
+          Navigator.of(context).pop();
+          _addMcpServer(server);
+        },
+      ),
+    );
   }
 
   @override
@@ -108,7 +197,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
-                  // Appearance section
+
+                  // ── Appearance section ────────────────────────────────
                   const SectionHeader(title: 'Appearance'),
                   Card(
                     child: Column(
@@ -158,7 +248,173 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  // Updates section (Android only)
+
+                  // ── LLM Provider section ──────────────────────────────
+                  const SectionHeader(title: 'LLM Provider'),
+                  Card(
+                    child: Column(
+                      children: LlmProvider.values.map((provider) {
+                        final isSelected = _llmProvider == provider;
+                        return ListTile(
+                          leading: IconBox(
+                            icon: _providerIcon(provider),
+                            colorScheme: isSelected
+                                ? ColorScheme.fromSeed(
+                                    seedColor: cs.primary,
+                                    primary: cs.primary,
+                                    onPrimary: cs.onPrimary,
+                                  )
+                                : cs,
+                          ),
+                          title: Text(
+                            provider.displayName,
+                            style: TextStyle(
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: isSelected ? cs.primary : null,
+                            ),
+                          ),
+                          subtitle: Text(provider.defaultBaseUrl),
+                          trailing: isSelected
+                              ? Icon(Icons.check_circle, color: cs.primary)
+                              : const SizedBox.shrink(),
+                          onTap: () => _selectProvider(provider),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // API Key and Server URL card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'API Key',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _apiKeyController,
+                            onChanged: _onApiKeyChanged,
+                            obscureText: !_showApiKey,
+                            decoration: InputDecoration(
+                              hintText: 'Enter your API key',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showApiKey
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                                onPressed: () {
+                                  setState(() => _showApiKey = !_showApiKey);
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Server URL',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Leave empty to use default: ${_llmProvider.defaultBaseUrl}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _serverUrlController,
+                            onChanged: _onServerUrlChanged,
+                            decoration: InputDecoration(
+                              hintText: _llmProvider.defaultBaseUrl,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── MCP Servers section ───────────────────────────────
+                  const SectionHeader(title: 'MCP Servers'),
+                  Card(
+                    child: Column(
+                      children: [
+                        if (_mcpServers.isEmpty)
+                          ListTile(
+                            leading: IconBox(
+                              icon: Icons.extension_outlined,
+                              colorScheme: cs,
+                            ),
+                            title: const Text('No MCP servers configured'),
+                            subtitle: const Text(
+                              'Add servers to enable tool calling in chat',
+                            ),
+                          )
+                        else
+                          ..._mcpServers.map((server) {
+                            return ListTile(
+                              leading: IconBox(
+                                icon: Icons.extension_outlined,
+                                colorScheme: ColorScheme.fromSeed(
+                                  seedColor: cs.secondary,
+                                  primary: cs.secondary,
+                                  onPrimary: cs.onSecondary,
+                                ),
+                              ),
+                              title: Text(server.name),
+                              subtitle: Text(
+                                '${server.type == McpTransportType.httpStreamable ? 'HTTP Streamable' : 'SSE'} \u00b7 ${server.url}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: IconButton(
+                                icon: Icon(
+                                  Icons.delete_outlined,
+                                  color: cs.error,
+                                ),
+                                onPressed: () => _removeMcpServer(server.name),
+                              ),
+                            );
+                          }),
+                        ListTile(
+                          leading: IconBox(
+                            icon: Icons.add,
+                            colorScheme: ColorScheme.fromSeed(
+                              seedColor: cs.primary,
+                              primary: cs.primary,
+                              onPrimary: cs.onPrimary,
+                            ),
+                          ),
+                          title: Text(
+                            'Add MCP Server',
+                            style: TextStyle(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          onTap: _showAddMcpServerDialog,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Updates section (Android only) ────────────────────
                   if (!kIsWeb) ...[
                     const SectionHeader(title: 'Updates'),
                     Card(
@@ -194,7 +450,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 24),
                   ],
-                  // GitHub section
+
+                  // ── GitHub section ────────────────────────────────────
                   const SectionHeader(title: 'GitHub'),
                   Card(
                     child: Column(
@@ -257,7 +514,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  IconData _providerIcon(LlmProvider provider) {
+    switch (provider) {
+      case LlmProvider.openai:
+        return Icons.smart_toy_outlined;
+      case LlmProvider.githubModels:
+        return Icons.code;
+      case LlmProvider.openRouter:
+        return Icons.hub_outlined;
+    }
+  }
 }
+
+// ── Theme Tile ──────────────────────────────────────────────────────────────
 
 class _ThemeTile extends StatelessWidget {
   final IconData icon;
@@ -303,6 +573,134 @@ class _ThemeTile extends StatelessWidget {
           ? Icon(Icons.check_circle, color: cs.primary)
           : const SizedBox.shrink(),
       onTap: onTap,
+    );
+  }
+}
+
+// ── Add MCP Server Dialog ───────────────────────────────────────────────────
+
+class _AddMcpServerDialog extends StatefulWidget {
+  final ValueChanged<McpServerConfig> onAdd;
+
+  const _AddMcpServerDialog({required this.onAdd});
+
+  @override
+  State<_AddMcpServerDialog> createState() => _AddMcpServerDialogState();
+}
+
+class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
+  final _nameController = TextEditingController();
+  final _urlController = TextEditingController();
+  McpTransportType _transportType = McpTransportType.httpStreamable;
+  String? _nameError;
+  String? _urlError;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  void _onAdd() {
+    final name = _nameController.text.trim();
+    final url = _urlController.text.trim();
+    bool valid = true;
+
+    setState(() {
+      _nameError = null;
+      _urlError = null;
+
+      if (name.isEmpty) {
+        _nameError = 'Name is required';
+        valid = false;
+      }
+      if (url.isEmpty) {
+        _urlError = 'URL is required';
+        valid = false;
+      } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        _urlError = 'Must start with http:// or https://';
+        valid = false;
+      }
+    });
+
+    if (valid) {
+      widget.onAdd(McpServerConfig(name: name, url: url, type: _transportType));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add MCP Server'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                hintText: 'e.g. My Tools Server',
+                errorText: _nameError,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onChanged: (_) {
+                if (_nameError != null) setState(() => _nameError = null);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _urlController,
+              decoration: InputDecoration(
+                labelText: 'Server URL',
+                hintText: 'https://example.com/mcp',
+                errorText: _urlError,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onChanged: (_) {
+                if (_urlError != null) setState(() => _urlError = null);
+              },
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Transport Type',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: McpTransportType.values.map((type) {
+                final isSelected = _transportType == type;
+                return FilterChip(
+                  selected: isSelected,
+                  label: Text(
+                    type == McpTransportType.httpStreamable
+                        ? 'HTTP Streamable'
+                        : 'SSE',
+                  ),
+                  onSelected: (_) {
+                    setState(() => _transportType = type);
+                  },
+                  showCheckmark: true,
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(onPressed: _onAdd, child: const Text('Add')),
+      ],
     );
   }
 }

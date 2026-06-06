@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/chat_controller.dart';
+import 'chat_screen.dart';
 import 'settings_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -16,14 +19,16 @@ class _HomeShellState extends State<HomeShell> {
         pageBuilder: (_, __, ___) => const SettingsScreen(),
         transitionsBuilder: (_, animation, __, child) {
           return SlideTransition(
-            position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-                .animate(
-                  CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeInOut,
-                    reverseCurve: Curves.easeInOut,
-                  ),
-                ),
+            position: Tween<Offset>(
+              begin: const Offset(1, 0),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeInOut,
+                reverseCurve: Curves.easeInOut,
+              ),
+            ),
             child: child,
           );
         },
@@ -35,6 +40,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = context.watch<ChatController>();
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 64,
@@ -48,24 +55,29 @@ class _HomeShellState extends State<HomeShell> {
                 height: 32,
               ),
             ),
-            const SizedBox(width: 12),
-            Text(
-              'Synapse',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
-              ),
-            ),
           ],
         ),
         actions: [
+          // Model selector chip
+          ModelSelectorChip(
+            selectedModel: controller.selectedModel,
+            onModelSelected: controller.selectModel,
+            models: controller.availableModels,
+            isLoading: controller.isLoadingModels,
+            onRefresh: controller.refreshModels,
+          ),
+          const SizedBox(width: 8),
+          // Settings button
           Container(
             margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.5),
               ),
             ),
             child: IconButton(
@@ -76,9 +88,7 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ],
       ),
-      body: const Center(
-        child: Text('Welcome to Synapse'),
-      ),
+      body: ChatScreen(controller: controller),
     );
   }
 }

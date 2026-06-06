@@ -12,7 +12,7 @@ import 'update_service.dart';
 // ---------------------------------------------------------------------------
 
 const _taskName = 'backgroundUpdateCheck';
-const _taskUniqueName = 'com.officeAschi.backgroundUpdateCheck';
+const _taskUniqueName = 'in.arijitk.synapse.backgroundUpdateCheck';
 const _channelId = 'app_updates';
 const _channelName = 'App Updates';
 const _channelDescription = 'Notifications for available app updates';

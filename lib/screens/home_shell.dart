@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'team_search_screen.dart';
-import 'seat_search_screen.dart';
 import 'settings_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -11,32 +9,6 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _selectedIndex = 0;
-  late final PageController _pageController;
-
-  static const List<Widget> _screens = [TeamSearchScreen(), SeatSearchScreen()];
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _switchTab(int index) {
-    if (index == _selectedIndex) return;
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
-
   void _openSettings(BuildContext context) {
     Navigator.push(
       context,
@@ -63,7 +35,6 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 64,
@@ -91,10 +62,10 @@ class _HomeShellState extends State<HomeShell> {
           Container(
             margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.5),
+                color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
               ),
             ),
             child: IconButton(
@@ -105,28 +76,8 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ],
       ),
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() => _selectedIndex = index);
-        },
-        children: _screens,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: _switchTab,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.group_outlined),
-            selectedIcon: Icon(Icons.group),
-            label: 'Teams',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.event_seat_outlined),
-            selectedIcon: Icon(Icons.event_seat),
-            label: 'Seat Search',
-          ),
-        ],
+      body: const Center(
+        child: Text('Welcome to Synapse'),
       ),
     );
   }

@@ -1,14 +1,11 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'services/api_service.dart';
 import 'services/background_update.dart';
 import 'services/update_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 import 'utils/snackbar_service.dart';
-import 'widgets/health_banner.dart';
-import 'screens/team_detail_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/home_shell.dart';
 
@@ -56,18 +53,8 @@ class MyApp extends StatelessWidget {
                   theme: buildAppTheme(lightScheme),
                   darkTheme: buildAppTheme(darkScheme),
                   builder: (context, child) {
-                    final api = ApiService();
-                    Widget content = Column(
-                      children: [
-                        HealthBanner(api: api),
-                        Expanded(
-                          // Inner ScaffoldMessenger isolates page Scaffolds
-                          // so they don't register with the root one.
-                          child: ScaffoldMessenger(
-                            child: child ?? const SizedBox.shrink(),
-                          ),
-                        ),
-                      ],
+                    Widget content = ScaffoldMessenger(
+                      child: child ?? const SizedBox.shrink(),
                     );
                     if (kDebugMode) {
                       content = Banner(
@@ -76,8 +63,6 @@ class MyApp extends StatelessWidget {
                         child: content,
                       );
                     }
-                    // Root ScaffoldMessenger + Scaffold sits above the
-                    // Navigator so its snackbars paint on top of dialogs.
                     return ScaffoldMessenger(
                       key: rootScaffoldMessengerKey,
                       child: Scaffold(body: content),
@@ -103,17 +88,6 @@ class MyApp extends StatelessWidget {
                         transitionDuration: const Duration(milliseconds: 300),
                         reverseTransitionDuration: const Duration(milliseconds: 300),
                       );
-                    }
-                    if (settings.name != null &&
-                        settings.name!.startsWith('/team/')) {
-                      final id = int.tryParse(
-                        settings.name!.replaceFirst('/team/', ''),
-                      );
-                      if (id != null) {
-                        return MaterialPageRoute(
-                          builder: (_) => TeamDetailScreen(teamId: id),
-                        );
-                      }
                     }
                     return MaterialPageRoute(
                       builder: (_) => const HomeShell(),

@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
@@ -7,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_models.dart';
 import '../services/chat_controller.dart';
+import '../utils/snackbar_service.dart';
 import 'package:markdown/markdown.dart' as md;
 
 /// Main chat screen displaying conversation messages with markdown rendering,
@@ -54,7 +57,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onControllerChanged() {
     setState(() {});
-    // Auto-scroll when new messages arrive or content updates
     if (_ctrl.messages.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -129,6 +131,78 @@ class _ChatScreenState extends State<ChatScreen> {
     return mimeMap[ext] ?? 'application/octet-stream';
   }
 
+  void _copyMessage(String content) {
+    Clipboard.setData(ClipboardData(text: content));
+    showRootSnackBar(
+      const SnackBar(
+        content: Text('Message copied to clipboard'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showEditDialog(ChatMessage message) {
+    final editController = TextEditingController(text: message.content);
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Edit Message'),
+          content: TextField(
+            controller: editController,
+            maxLines: 8,
+            minLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Edit your message...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final newContent = editController.text.trim();
+                if (newContent.isNotEmpty) {
+                  Navigator.of(ctx).pop();
+                  _ctrl.editUserMessage(message.id, newContent);
+                }
+              },
+              child: const Text('Save & Resend'),
+            ),
+          ],
+        );
+      },
+    );
+    editController.dispose;
+  }
+
+  void _forkChat(String messageId) {
+    _ctrl.forkChatAtMessage(messageId);
+    showRootSnackBar(
+      const SnackBar(
+        content: Text('Chat forked from this message'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _exportChat() {
+    final json = _ctrl.exportChatToJson();
+    final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
+    Clipboard.setData(ClipboardData(text: jsonStr));
+    showRootSnackBar(
+      const SnackBar(
+        content: Text('Chat exported to clipboard as JSON'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -142,7 +216,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _ctrl.messages.length,
                   itemBuilder: (context, index) {
-                    return _MessageBubble(message: _ctrl.messages[index]);
+                    return _MessageBubble(
+                      message: _ctrl.messages[index],
+                      onCopy: _copyMessage,
+                      onEdit: _showEditDialog,
+                      onFork: _forkChat,
+                      isGenerating: _ctrl.isGenerating,
+                    );
                   },
                 ),
         ),
@@ -154,7 +234,7 @@ class _ChatScreenState extends State<ChatScreen> {
             onRemove: _ctrl.removeAttachment,
           ),
 
-        // MCP tools status
+        // MCP tools status with selection
         _McpToolsStatus(controller: _ctrl),
 
         // Input bar
@@ -166,6 +246,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onAttach: _onAttach,
           isGenerating: _ctrl.isGenerating,
           onClearChat: _ctrl.clearConversation,
+          onExportChat: _exportChat,
           hasMessages: _ctrl.messages.isNotEmpty,
         ),
       ],
@@ -214,7 +295,6 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
       itemBuilder: (context) {
         final items = <PopupMenuEntry<dynamic>>[];
 
-        // Refresh button at top
         items.add(PopupMenuItem<dynamic>(
           value: '__refresh__',
           child: Row(
@@ -246,7 +326,6 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
             ),
           ));
         } else if (widget.error != null && widget.models.isEmpty) {
-          // Show error when no models loaded
           items.add(PopupMenuItem<dynamic>(
             enabled: false,
             child: Padding(
@@ -268,7 +347,6 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
             ),
           ));
         } else {
-          // Group models by provider
           final grouped = <String, List<LlmModel>>{};
           for (final m in widget.models) {
             (grouped[m.provider] ??= []).add(m);
@@ -279,7 +357,6 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
             if (!isFirst) items.add(const PopupMenuDivider());
             isFirst = false;
 
-            // Provider header
             items.add(PopupMenuItem<dynamic>(
               enabled: false,
               height: 32,
@@ -293,7 +370,6 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
               ),
             ));
 
-            // Models under this provider
             for (final model in entry.value) {
               items.add(PopupMenuItem<dynamic>(
                 value: model,
@@ -418,119 +494,262 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ── Message Bubble ──────────────────────────────────────────────────────────
+// ── Message Bubble with Actions ─────────────────────────────────────────────
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   final ChatMessage message;
+  final ValueChanged<String> onCopy;
+  final ValueChanged<ChatMessage> onEdit;
+  final ValueChanged<String> onFork;
+  final bool isGenerating;
 
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    required this.onCopy,
+    required this.onEdit,
+    required this.onFork,
+    required this.isGenerating,
+  });
+
+  @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  bool _showActions = false;
 
   @override
   Widget build(BuildContext context) {
-    final isUser = message.role == MessageRole.user;
+    final isUser = widget.message.role == MessageRole.user;
     final cs = Theme.of(context).colorScheme;
 
-    final bubbleColor = isUser ? cs.primaryContainer : cs.surfaceContainerHighest;
+    final bubbleColor =
+        isUser ? cs.primaryContainer : cs.surfaceContainerHighest;
     final contentColor = isUser ? cs.onPrimaryContainer : cs.onSurface;
-    final alignment = isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final alignment =
+        isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Column(
-        crossAxisAlignment: alignment,
-        children: [
-          // Role label
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isUser) ...[
-                  ClipOval(
-                    child: Image.asset(
-                      'assets/icons/app_icon.png',
-                      width: 14,
-                      height: 14,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    message.model?.displayName ?? 'Assistant',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _showActions = true),
+      onExit: (_) => setState(() => _showActions = false),
+      child: GestureDetector(
+        onLongPress: () => setState(() => _showActions = !_showActions),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Column(
+            crossAxisAlignment: alignment,
+            children: [
+              // Role label
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!isUser) ...[
+                      ClipOval(
+                        child: Image.asset(
+                          'assets/icons/app_icon.png',
+                          width: 14,
+                          height: 14,
                         ),
-                  ),
-                ] else
-                  Text(
-                    'You',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.7),
-                        ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Message bubble
-          Container(
-            constraints: BoxConstraints(
-              minWidth: 60,
-              maxWidth: isUser ? 340 : MediaQuery.of(context).size.width * 0.85,
-            ),
-            decoration: BoxDecoration(
-              color: bubbleColor,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isUser ? 16 : 4),
-                bottomRight: Radius.circular(isUser ? 4 : 16),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.message.model?.displayName ?? 'Synapse',
+                        style:
+                            Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.7),
+                                ),
+                      ),
+                    ] else
+                      Text(
+                        'You',
+                        style:
+                            Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.7),
+                                ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Attachments
-                if (message.attachments.isNotEmpty) ...[
-                  ...message.attachments.map(
-                    (a) => _AttachmentChip(attachment: a, tint: contentColor),
-                  ),
-                  if (message.content.isNotEmpty) const SizedBox(height: 8),
-                ],
 
-                // Text content
-                if (message.content.isNotEmpty) ...[
-                  if (isUser || message.isStreaming)
-                    // Plain text for user messages and during streaming
-                    SelectableText(
-                      message.content,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: contentColor,
-                          ),
-                    )
-                  else
-                    // Markdown for completed assistant messages
-                    _AssistantMarkdown(
-                      content: message.content,
-                      contentColor: contentColor,
-                    ),
-                ] else if (!message.isStreaming)
-                  Text(
-                    'Empty response',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: contentColor.withValues(alpha: 0.5),
+              // Message bubble
+              Container(
+                constraints: BoxConstraints(
+                  minWidth: 60,
+                  maxWidth: isUser
+                      ? 340
+                      : MediaQuery.of(context).size.width * 0.85,
+                ),
+                decoration: BoxDecoration(
+                  color: bubbleColor,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isUser ? 16 : 4),
+                    bottomRight: Radius.circular(isUser ? 4 : 16),
+                  ),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Attachments
+                    if (widget.message.attachments.isNotEmpty) ...[
+                      ...widget.message.attachments.map(
+                        (a) =>
+                            _AttachmentChip(attachment: a, tint: contentColor),
+                      ),
+                      if (widget.message.content.isNotEmpty)
+                        const SizedBox(height: 8),
+                    ],
+
+                    // Text content
+                    if (widget.message.content.isNotEmpty) ...[
+                      if (isUser || widget.message.isStreaming)
+                        SelectableText(
+                          widget.message.content,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: contentColor),
+                        )
+                      else
+                        _AssistantMarkdown(
+                          content: widget.message.content,
+                          contentColor: contentColor,
                         ),
-                  ),
+                    ] else if (!widget.message.isStreaming)
+                      Text(
+                        'Empty response',
+                        style:
+                            Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: contentColor.withValues(alpha: 0.5),
+                                ),
+                      ),
 
-                // Streaming indicator
-                if (message.isStreaming) ...[
-                  const SizedBox(height: 4),
-                  _StreamingIndicator(tint: contentColor),
-                ],
-              ],
-            ),
+                    // Streaming indicator
+                    if (widget.message.isStreaming) ...[
+                      const SizedBox(height: 4),
+                      _StreamingIndicator(tint: contentColor),
+                    ],
+                  ],
+                ),
+              ),
+
+              // Action buttons (shown on hover or long press)
+              if (_showActions && !widget.message.isStreaming)
+                _MessageActions(
+                  isUser: isUser,
+                  onCopy: () => widget.onCopy(widget.message.content),
+                  onEdit: isUser && !widget.isGenerating
+                      ? () => widget.onEdit(widget.message)
+                      : null,
+                  onFork: !widget.isGenerating
+                      ? () => widget.onFork(widget.message.id)
+                      : null,
+                ),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Message Actions Bar ─────────────────────────────────────────────────────
+
+class _MessageActions extends StatelessWidget {
+  final bool isUser;
+  final VoidCallback onCopy;
+  final VoidCallback? onEdit;
+  final VoidCallback? onFork;
+
+  const _MessageActions({
+    required this.isUser,
+    required this.onCopy,
+    this.onEdit,
+    this.onFork,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ActionButton(
+            icon: Icons.copy_outlined,
+            label: 'Copy',
+            onPressed: onCopy,
+            cs: cs,
+          ),
+          if (onEdit != null)
+            _ActionButton(
+              icon: Icons.edit_outlined,
+              label: 'Edit',
+              onPressed: onEdit!,
+              cs: cs,
+            ),
+          if (onFork != null)
+            _ActionButton(
+              icon: Icons.fork_right_outlined,
+              label: 'Fork',
+              onPressed: onFork!,
+              cs: cs,
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final ColorScheme cs;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -552,11 +771,24 @@ class _AssistantMarkdown extends StatelessWidget {
     return MarkdownBody(
       data: content,
       selectable: true,
+      extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
-        p: Theme.of(context).textTheme.bodyMedium?.copyWith(color: contentColor),
-        h1: Theme.of(context).textTheme.titleLarge?.copyWith(color: contentColor),
-        h2: Theme.of(context).textTheme.titleMedium?.copyWith(color: contentColor),
-        h3: Theme.of(context).textTheme.titleSmall?.copyWith(color: contentColor),
+        p: Theme.of(context)
+            .textTheme
+            .bodyMedium
+            ?.copyWith(color: contentColor),
+        h1: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: contentColor,
+              fontWeight: FontWeight.bold,
+            ),
+        h2: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: contentColor,
+              fontWeight: FontWeight.bold,
+            ),
+        h3: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: contentColor,
+              fontWeight: FontWeight.bold,
+            ),
         h4: Theme.of(context).textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.bold,
               color: contentColor,
@@ -569,29 +801,34 @@ class _AssistantMarkdown extends StatelessWidget {
               fontWeight: FontWeight.bold,
               color: contentColor,
             ),
-        listBullet: Theme.of(context).textTheme.bodyMedium?.copyWith(color: contentColor),
+        listBullet: Theme.of(context)
+            .textTheme
+            .bodyMedium
+            ?.copyWith(color: contentColor),
         blockquote: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: contentColor.withValues(alpha: 0.7),
+              fontStyle: FontStyle.italic,
             ),
         code: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: contentColor,
+              color: cs.primary,
               fontFamily: 'monospace',
-              backgroundColor: contentColor.withValues(alpha: 0.08),
+              backgroundColor: cs.primary.withValues(alpha: 0.08),
             ),
         codeblockDecoration: BoxDecoration(
           color: isDark ? const Color(0xFF282C34) : const Color(0xFFF5F5F5),
           borderRadius: BorderRadius.circular(8),
         ),
-        codeblockPadding: const EdgeInsets.all(12),
+        codeblockPadding: EdgeInsets.zero,
         blockquoteDecoration: BoxDecoration(
           border: Border(
             left: BorderSide(
-              color: contentColor.withValues(alpha: 0.3),
+              color: cs.primary.withValues(alpha: 0.4),
               width: 3,
             ),
           ),
         ),
-        blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+        blockquotePadding:
+            const EdgeInsets.only(left: 12, top: 4, bottom: 4),
         horizontalRuleDecoration: BoxDecoration(
           border: Border(
             top: BorderSide(color: contentColor.withValues(alpha: 0.2)),
@@ -606,7 +843,15 @@ class _AssistantMarkdown extends StatelessWidget {
               fontWeight: FontWeight.bold,
               color: contentColor,
             ),
-        tableBody: Theme.of(context).textTheme.bodyMedium?.copyWith(color: contentColor),
+        tableBody: Theme.of(context)
+            .textTheme
+            .bodyMedium
+            ?.copyWith(color: contentColor),
+        tableCellsPadding: const EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: 4,
+        ),
+        tableHeadAlign: TextAlign.left,
       ),
       builders: {
         'code': _CodeBlockBuilder(isDark: isDark),
@@ -620,47 +865,139 @@ class _AssistantMarkdown extends StatelessWidget {
   }
 }
 
-/// Custom code block builder with syntax highlighting.
+/// Custom code block builder with syntax highlighting, language label, and copy button.
 class _CodeBlockBuilder extends MarkdownElementBuilder {
   final bool isDark;
   _CodeBlockBuilder({required this.isDark});
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    // Only handle fenced code blocks (pre > code)
     if (element.tag != 'code') return null;
 
     final text = element.textContent;
     String? language;
 
-    // Extract language from class attribute
     final classes = element.attributes['class'];
     if (classes != null && classes.startsWith('language-')) {
       language = classes.substring(9);
     }
 
-    if (language == null || language.isEmpty) return null;
+    // Check if parent is 'pre' (fenced code block) vs inline code
+    // For inline code without language, return null to use default styling
+    final isInlineCode = language == null || language.isEmpty;
 
-    // Use highlight.js for syntax highlighting
+    if (isInlineCode) return null;
+
+    final isMermaid = language.toLowerCase() == 'mermaid';
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
+    final bgColor = isDark ? const Color(0xFF282C34) : const Color(0xFFF5F5F5);
+    final headerColor = isDark ? const Color(0xFF21252B) : const Color(0xFFE8E8E8);
+    final textColor = isDark ? const Color(0xFFABB2BF) : const Color(0xFF383A42);
+    final labelColor = isDark ? const Color(0xFF7F848E) : const Color(0xFF999999);
 
-    try {
-      final result = highlight.parse(text, language: language);
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF282C34) : const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: _buildHighlightedText(result.nodes!, theme, isDark),
+    Widget codeContent;
+    if (isMermaid) {
+      // Render Mermaid as styled code block with a note
+      codeContent = SelectableText(
+        text,
+        style: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 13,
+          color: textColor,
         ),
       );
-    } catch (_) {
-      return null; // Fall back to default rendering
+    } else {
+      try {
+        final result = highlight.parse(text, language: language);
+        codeContent = _buildHighlightedText(result.nodes!, theme, isDark);
+      } catch (_) {
+        codeContent = SelectableText(
+          text,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 13,
+            color: textColor,
+          ),
+        );
+      }
     }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with language label and copy button
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: headerColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (isMermaid)
+                  Icon(Icons.schema_outlined, size: 14, color: labelColor),
+                if (isMermaid) const SizedBox(width: 4),
+                Text(
+                  isMermaid ? 'Mermaid Diagram' : language,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: labelColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                Builder(
+                  builder: (context) => InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: text));
+                      showRootSnackBar(
+                        const SnackBar(
+                          content: Text('Code copied to clipboard'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.copy_outlined, size: 12, color: labelColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Copy',
+                            style: TextStyle(fontSize: 11, color: labelColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Code content
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: codeContent,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHighlightedText(
@@ -726,7 +1063,7 @@ class _AttachmentChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.insert_drive_file_outlined,
+            _fileIcon(attachment.mimeType),
             size: 16,
             color: tint.withValues(alpha: 0.7),
           ),
@@ -754,6 +1091,14 @@ class _AttachmentChip extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  IconData _fileIcon(String mimeType) {
+    if (mimeType.startsWith('image/')) return Icons.image_outlined;
+    if (mimeType.startsWith('text/')) return Icons.description_outlined;
+    if (mimeType == 'application/json') return Icons.data_object_outlined;
+    if (mimeType == 'application/pdf') return Icons.picture_as_pdf_outlined;
+    return Icons.insert_drive_file_outlined;
   }
 }
 
@@ -851,88 +1196,248 @@ class _AttachmentPreviewBar extends StatelessWidget {
   }
 }
 
-// ── MCP Tools Status ────────────────────────────────────────────────────────
+// ── MCP Tools Status with Selection ─────────────────────────────────────────
 
-class _McpToolsStatus extends StatelessWidget {
+class _McpToolsStatus extends StatefulWidget {
   final ChatController controller;
 
   const _McpToolsStatus({required this.controller});
 
   @override
+  State<_McpToolsStatus> createState() => _McpToolsStatusState();
+}
+
+class _McpToolsStatusState extends State<_McpToolsStatus> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final toolCount = controller.mcpTools.length;
-    final error = controller.mcpError;
-    final isLoading = controller.isLoadingMcpTools;
+    final ctrl = widget.controller;
+    final toolCount = ctrl.mcpTools.length;
+    final activeCount = ctrl.activeTools.length;
+    final error = ctrl.mcpError;
+    final isLoading = ctrl.isLoadingMcpTools;
 
     if (!isLoading && toolCount == 0 && error == null) {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          if (isLoading) ...[
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.5),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'Discovering MCP tools...',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
+    return Column(
+      children: [
+        // Status bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            children: [
+              if (isLoading) ...[
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Discovering MCP tools...',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+              ] else if (error != null && toolCount == 0) ...[
+                Icon(Icons.error_outline, size: 14, color: cs.error),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'MCP error: $error',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: cs.error,
+                        ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-            ),
-          ] else if (error != null && toolCount == 0) ...[
-            Icon(Icons.error_outline, size: 14, color: cs.error),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'MCP error: $error',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: cs.error,
+                ),
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 14,
+                    icon: Icon(Icons.refresh, color: cs.error),
+                    onPressed: ctrl.refreshMcpTools,
+                  ),
+                ),
+              ] else if (toolCount > 0) ...[
+                Icon(Icons.extension_outlined, size: 14, color: cs.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: Text(
+                      '$activeCount of $toolCount tool${toolCount > 1 ? 's' : ''} enabled',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: cs.primary,
+                          ),
                     ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 14,
-                icon: Icon(Icons.refresh, color: cs.error),
-                onPressed: controller.refreshMcpTools,
-              ),
-            ),
-          ] else if (toolCount > 0) ...[
-            Icon(Icons.extension_outlined, size: 14, color: cs.primary),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '$toolCount MCP tool${toolCount > 1 ? 's' : ''} available',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  ),
+                ),
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 14,
+                    icon: Icon(
+                      _expanded
+                          ? Icons.expand_less
+                          : Icons.expand_more,
                       color: cs.primary,
                     ),
-              ),
+                    onPressed: () =>
+                        setState(() => _expanded = !_expanded),
+                  ),
+                ),
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 14,
+                    icon: Icon(Icons.refresh, color: cs.primary),
+                    onPressed: ctrl.refreshMcpTools,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // Expanded tool selection
+        if (_expanded && toolCount > 0)
+          Container(
+            constraints: const BoxConstraints(maxHeight: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
             ),
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 14,
-                icon: Icon(Icons.refresh, color: cs.primary),
-                onPressed: controller.refreshMcpTools,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Select all / none buttons
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Tool Selection',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurfaceVariant,
+                            ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: ctrl.enableAllTools,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text('All',
+                            style: TextStyle(fontSize: 11, color: cs.primary)),
+                      ),
+                      TextButton(
+                        onPressed: ctrl.disableAllTools,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text('None',
+                            style: TextStyle(fontSize: 11, color: cs.primary)),
+                      ),
+                    ],
+                  ),
+                ),
+                // Tool list
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 4),
+                    itemCount: ctrl.mcpTools.length,
+                    itemBuilder: (context, index) {
+                      final tool = ctrl.mcpTools[index];
+                      final isEnabled = ctrl.enabledToolNames
+                          .contains(tool.tool.name);
+                      return InkWell(
+                        onTap: () => ctrl.toggleTool(tool.tool.name),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: Checkbox(
+                                  value: isEnabled,
+                                  onChanged: (_) =>
+                                      ctrl.toggleTool(tool.tool.name),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      tool.tool.name,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: cs.onSurface,
+                                      ),
+                                    ),
+                                    if (tool.tool.description != null)
+                                      Text(
+                                        tool.tool.description!,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                tool.serverName,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -947,6 +1452,7 @@ class _ChatInputBar extends StatelessWidget {
   final VoidCallback onAttach;
   final bool isGenerating;
   final VoidCallback onClearChat;
+  final VoidCallback onExportChat;
   final bool hasMessages;
 
   const _ChatInputBar({
@@ -957,6 +1463,7 @@ class _ChatInputBar extends StatelessWidget {
     required this.onAttach,
     required this.isGenerating,
     required this.onClearChat,
+    required this.onExportChat,
     required this.hasMessages,
   });
 
@@ -1013,7 +1520,7 @@ class _ChatInputBar extends StatelessWidget {
 
           const SizedBox(height: 8),
 
-          // Bottom toolbar: attach, clear, send
+          // Bottom toolbar
           Row(
             children: [
               // Attach button
@@ -1051,6 +1558,23 @@ class _ChatInputBar extends StatelessWidget {
                   ),
                 ),
 
+              // Export chat button
+              if (hasMessages)
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    icon: Icon(
+                      Icons.download_outlined,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    onPressed: onExportChat,
+                    tooltip: 'Export chat as JSON',
+                  ),
+                ),
+
               const Spacer(),
 
               // Send button
@@ -1058,21 +1582,24 @@ class _ChatInputBar extends StatelessWidget {
                 width: 40,
                 height: 40,
                 child: FilledButton(
-                  onPressed: textController.text.trim().isNotEmpty && !isGenerating
-                      ? onSend
-                      : null,
+                  onPressed:
+                      textController.text.trim().isNotEmpty && !isGenerating
+                          ? onSend
+                          : null,
                   style: FilledButton.styleFrom(
                     shape: const CircleBorder(),
                     padding: EdgeInsets.zero,
                     backgroundColor: cs.primary,
-                    disabledBackgroundColor: cs.onSurface.withValues(alpha: 0.12),
+                    disabledBackgroundColor:
+                        cs.onSurface.withValues(alpha: 0.12),
                   ),
                   child: Icon(
                     Icons.send,
                     size: 18,
-                    color: textController.text.trim().isNotEmpty && !isGenerating
-                        ? cs.onPrimary
-                        : cs.onSurface.withValues(alpha: 0.38),
+                    color:
+                        textController.text.trim().isNotEmpty && !isGenerating
+                            ? cs.onPrimary
+                            : cs.onSurface.withValues(alpha: 0.38),
                   ),
                 ),
               ),

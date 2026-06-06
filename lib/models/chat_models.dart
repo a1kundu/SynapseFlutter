@@ -13,6 +13,20 @@ class LlmModel {
     required this.provider,
     this.supportsTools = true,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'displayName': displayName,
+        'provider': provider,
+        'supportsTools': supportsTools,
+      };
+
+  factory LlmModel.fromJson(Map<String, dynamic> json) => LlmModel(
+        id: json['id'] as String,
+        displayName: json['displayName'] as String,
+        provider: json['provider'] as String,
+        supportsTools: json['supportsTools'] as bool? ?? true,
+      );
 }
 
 /// A file attachment on a chat message.
@@ -37,6 +51,27 @@ class ChatAttachment {
       return '${(kb / 1024.0 * 10).truncate() / 10.0} MB';
     }
   }
+
+  /// Whether this is a text-based file whose content can be included in LLM context.
+  bool get isTextBased {
+    return mimeType.startsWith('text/') ||
+        mimeType == 'application/json' ||
+        mimeType == 'application/xml' ||
+        mimeType == 'application/javascript';
+  }
+
+  Map<String, dynamic> toJson() => {
+        'fileName': fileName,
+        'fileSizeBytes': fileSizeBytes,
+        'mimeType': mimeType,
+        // bytes are NOT persisted (too large for SharedPreferences)
+      };
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> json) => ChatAttachment(
+        fileName: json['fileName'] as String,
+        fileSizeBytes: json['fileSizeBytes'] as int,
+        mimeType: json['mimeType'] as String,
+      );
 }
 
 /// Sender role for a chat message.
@@ -76,6 +111,33 @@ class ChatMessage {
       isStreaming: isStreaming ?? this.isStreaming,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'role': role.name,
+        'content': content,
+        'timestamp': timestamp,
+        'attachments': attachments.map((a) => a.toJson()).toList(),
+        if (model != null) 'model': model!.toJson(),
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        id: json['id'] as String,
+        role: MessageRole.values.firstWhere(
+          (r) => r.name == json['role'],
+          orElse: () => MessageRole.assistant,
+        ),
+        content: json['content'] as String? ?? '',
+        timestamp: json['timestamp'] as int? ?? 0,
+        attachments: (json['attachments'] as List?)
+                ?.map(
+                    (a) => ChatAttachment.fromJson(a as Map<String, dynamic>))
+                .toList() ??
+            [],
+        model: json['model'] != null
+            ? LlmModel.fromJson(json['model'] as Map<String, dynamic>)
+            : null,
+      );
 
   static String generateId() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';

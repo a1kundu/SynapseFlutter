@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/background_update.dart';
 import 'services/chat_controller.dart';
+import 'services/chat_storage.dart';
 import 'services/update_service.dart';
 import 'settings/settings_repository.dart';
 import 'theme/app_theme.dart';
@@ -18,6 +19,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SettingsRepository.instance.init();
+  await ChatStorage.instance.init();
   await loadThemePreferences();
   try {
     await BackgroundUpdateManager.init();

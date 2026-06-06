@@ -5,7 +5,6 @@ import '../models/llm_models.dart';
 import '../models/mcp_models.dart';
 
 /// Central settings repository (singleton).
-/// Mirrors SynapseKT's SettingsRepository.
 class SettingsRepository extends ChangeNotifier {
   static SettingsRepository? _instance;
   static SettingsRepository get instance => _instance ??= SettingsRepository._();
@@ -65,6 +64,16 @@ class SettingsRepository extends ChangeNotifier {
     _prefs?.setString('last_selected_model_id', value);
   }
 
+  // ── System Prompt ─────────────────────────────────────────────────────
+
+  /// User-defined system prompt (appended after the base system prompt).
+  String get systemPrompt => _prefs?.getString('system_prompt') ?? '';
+
+  set systemPrompt(String value) {
+    _prefs?.setString('system_prompt', value);
+    notifyListeners();
+  }
+
   // ── MCP Servers ───────────────────────────────────────────────────────
 
   List<McpServerConfig> get mcpServers {
@@ -96,6 +105,27 @@ class SettingsRepository extends ChangeNotifier {
     final servers = mcpServers.where((s) => s.name != name).toList();
     _saveMcpServers(servers);
   }
+
+  // ── Enabled MCP Tool Names ────────────────────────────────────────────
+
+  /// Set of tool names enabled for LLM context. Empty = all enabled.
+  Set<String> get enabledMcpToolNames {
+    final json = _prefs?.getString('enabled_mcp_tools');
+    if (json == null || json.isEmpty) return {};
+    try {
+      return (jsonDecode(json) as List).cast<String>().toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  set enabledMcpToolNames(Set<String> names) {
+    _prefs?.setString('enabled_mcp_tools', jsonEncode(names.toList()));
+  }
+
+  /// Whether tool selection has been explicitly set (vs default all-enabled).
+  bool get hasToolSelection =>
+      _prefs?.getString('enabled_mcp_tools')?.isNotEmpty == true;
 
   // ── Theme ─────────────────────────────────────────────────────────────
 

@@ -32,6 +32,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _serverUrlController;
   bool _showApiKey = false;
 
+  // System Prompt state
+  late TextEditingController _systemPromptController;
+
   // MCP Servers state
   late List<McpServerConfig> _mcpServers;
 
@@ -44,6 +47,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _llmProvider = settings.llmProvider;
     _apiKeyController = TextEditingController(text: settings.llmApiKey);
     _serverUrlController = TextEditingController(text: settings.llmServerUrl);
+    _systemPromptController =
+        TextEditingController(text: settings.systemPrompt);
     _mcpServers = settings.mcpServers;
   }
 
@@ -52,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _modelRefreshDebounce?.cancel();
     _apiKeyController.dispose();
     _serverUrlController.dispose();
+    _systemPromptController.dispose();
     super.dispose();
   }
 
@@ -85,7 +91,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showUpdateDialog(context, update);
     } else {
       showRootSnackBar(
-        const SnackBar(content: Text('You\'re already on the latest version.')),
+        const SnackBar(
+            content: Text('You\'re already on the latest version.')),
       );
     }
   }
@@ -95,7 +102,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _llmProvider = provider;
       settings.llmProvider = provider;
-      // Reset server URL if it was the default of a different provider
       if (_serverUrlController.text.isEmpty ||
           LlmProvider.values
               .where((p) => p != provider)
@@ -117,6 +123,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _refreshModelsIfConfigured();
   }
 
+  void _onSystemPromptChanged(String value) {
+    SettingsRepository.instance.systemPrompt = value;
+  }
+
   void _refreshModelsIfConfigured() {
     _modelRefreshDebounce?.cancel();
     _modelRefreshDebounce = Timer(const Duration(milliseconds: 600), () {
@@ -134,7 +144,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _mcpServers = settings.mcpServers;
     });
-    // Refresh MCP tools in the chat controller
     try {
       final chatController = context.read<ChatController>();
       chatController.refreshMcpTools();
@@ -147,7 +156,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _mcpServers = settings.mcpServers;
     });
-    // Refresh MCP tools in the chat controller
     try {
       final chatController = context.read<ChatController>();
       chatController.refreshMcpTools();
@@ -199,7 +207,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 12),
                         Text(
                           'Synapse',
-                          style: Theme.of(context).textTheme.headlineSmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
@@ -207,13 +217,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           appVersion == 'APP_VERSION_PLACEHOLDER'
                               ? 'dev (${UpdateService.channel})'
                               : 'v$appVersion (${UpdateService.channel})',
-                          style: Theme.of(context).textTheme.bodyMedium
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
                               ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                         const SizedBox(height: 2),
                       ],
                     ),
                   ),
+
+                  // ── System Prompt section ──────────────────────────────
+                  const SectionHeader(title: 'System Prompt'),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Base prompt (always included):',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'You are Synapse, a helpful AI assistant.\n'
+                              'Current date and time: [auto-populated]',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                    fontFamily: 'monospace',
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Custom instructions (appended to base prompt):',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _systemPromptController,
+                            onChanged: _onSystemPromptChanged,
+                            maxLines: 6,
+                            minLines: 3,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'e.g. Always respond in markdown. Be concise...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              helperText:
+                                  'This text is added to every conversation as system instructions.',
+                              helperMaxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
 
                   // ── Appearance section ────────────────────────────────
                   const SectionHeader(title: 'Appearance'),
@@ -312,7 +391,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(
                             'API Key',
-                            style: Theme.of(context).textTheme.labelLarge
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
                                 ?.copyWith(color: cs.onSurface),
                           ),
                           const SizedBox(height: 8),
@@ -332,7 +413,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       : Icons.visibility_outlined,
                                 ),
                                 onPressed: () {
-                                  setState(() => _showApiKey = !_showApiKey);
+                                  setState(
+                                      () => _showApiKey = !_showApiKey);
                                 },
                               ),
                             ),
@@ -340,13 +422,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 16),
                           Text(
                             'Server URL',
-                            style: Theme.of(context).textTheme.labelLarge
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
                                 ?.copyWith(color: cs.onSurface),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Leave empty to use default: ${_llmProvider.defaultBaseUrl}',
-                            style: Theme.of(context).textTheme.bodySmall
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
                                 ?.copyWith(color: cs.onSurfaceVariant),
                           ),
                           const SizedBox(height: 8),
@@ -404,7 +490,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   Icons.delete_outlined,
                                   color: cs.error,
                                 ),
-                                onPressed: () => _removeMcpServer(server.name),
+                                onPressed: () =>
+                                    _removeMcpServer(server.name),
                               ),
                             );
                           }),
@@ -455,7 +542,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               colorScheme: cs,
                             ),
                             title: const Text('Check for updates'),
-                            subtitle: Text('Channel: ${UpdateService.channel}'),
+                            subtitle:
+                                Text('Channel: ${UpdateService.channel}'),
                             trailing: Icon(
                               Icons.chevron_right,
                               color: cs.onSurfaceVariant,
@@ -474,7 +562,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       children: [
                         ListTile(
-                          leading: IconBox(icon: Icons.source, colorScheme: cs),
+                          leading:
+                              IconBox(icon: Icons.source, colorScheme: cs),
                           title: const Text('Source Code'),
                           subtitle: Text(
                             '${UpdateService.owner}/${UpdateService.repo}',
@@ -500,7 +589,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse('${UpdateService.repoUrl}/issues'),
+                            Uri.parse(
+                                '${UpdateService.repoUrl}/issues'),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),
@@ -510,13 +600,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             colorScheme: cs,
                           ),
                           title: const Text('Releases'),
-                          subtitle: const Text('Download latest versions'),
+                          subtitle:
+                              const Text('Download latest versions'),
                           trailing: Icon(
                             Icons.open_in_new,
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse('${UpdateService.repoUrl}/releases'),
+                            Uri.parse(
+                                '${UpdateService.repoUrl}/releases'),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),
@@ -569,7 +661,8 @@ class _ThemeTile extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: selected ? cs.primaryContainer : cs.surfaceContainerHighest,
+          color:
+              selected ? cs.primaryContainer : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
@@ -635,14 +728,16 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
       if (url.isEmpty) {
         _urlError = 'URL is required';
         valid = false;
-      } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      } else if (!url.startsWith('http://') &&
+          !url.startsWith('https://')) {
         _urlError = 'Must start with http:// or https://';
         valid = false;
       }
     });
 
     if (valid) {
-      widget.onAdd(McpServerConfig(name: name, url: url, type: _transportType));
+      widget.onAdd(
+          McpServerConfig(name: name, url: url, type: _transportType));
     }
   }
 
@@ -666,7 +761,9 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
                 ),
               ),
               onChanged: (_) {
-                if (_nameError != null) setState(() => _nameError = null);
+                if (_nameError != null) {
+                  setState(() => _nameError = null);
+                }
               },
             ),
             const SizedBox(height: 12),
@@ -681,7 +778,9 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
                 ),
               ),
               onChanged: (_) {
-                if (_urlError != null) setState(() => _urlError = null);
+                if (_urlError != null) {
+                  setState(() => _urlError = null);
+                }
               },
             ),
             const SizedBox(height: 16),

@@ -41,8 +41,9 @@ class AppUpdate {
 // ---------------------------------------------------------------------------
 
 class UpdateService {
-  static const _owner = 'arklnd';
-  static const _repo = 'synapse';
+  static const owner = 'arklnd';
+  static const repo = 'synapse';
+  static const repoUrl = 'https://github.com/$owner/$repo';
   static const _autoUpdateKey = 'autoUpdateCheck';
 
   static String get channel => kDebugMode ? 'debug' : 'release';
@@ -70,7 +71,7 @@ class UpdateService {
       final httpClient = HttpClient();
       try {
         final request = await httpClient.getUrl(
-          Uri.parse('https://api.github.com/repos/$_owner/$_repo/releases'),
+          Uri.parse('https://api.github.com/repos/$owner/$repo/releases'),
         );
         request.headers.set('Accept', 'application/vnd.github+json');
         final response = await request.close().timeout(

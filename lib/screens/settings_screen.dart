@@ -202,15 +202,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ListTile(
                           leading: IconBox(icon: Icons.source, colorScheme: cs),
                           title: const Text('Source Code'),
-                          subtitle: const Text('arklnd/synapse'),
+                          subtitle: Text(
+                            '${UpdateService.owner}/${UpdateService.repo}',
+                          ),
                           trailing: Icon(
                             Icons.open_in_new,
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse(
-                              'https://github.com/arklnd/synapse',
-                            ),
+                            Uri.parse(UpdateService.repoUrl),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),
@@ -226,9 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse(
-                              'https://github.com/arklnd/synapse/issues',
-                            ),
+                            Uri.parse('${UpdateService.repoUrl}/issues'),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),
@@ -244,9 +242,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse(
-                              'https://github.com/arklnd/synapse/releases',
-                            ),
+                            Uri.parse('${UpdateService.repoUrl}/releases'),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),

@@ -41,8 +41,8 @@ class AppUpdate {
 // ---------------------------------------------------------------------------
 
 class UpdateService {
-  static const owner = 'arklnd';
-  static const repo = 'synapse';
+  static const owner = 'a1kundu';
+  static const repo = 'SynapseFlutter';
   static const repoUrl = 'https://github.com/$owner/$repo';
   static const _autoUpdateKey = 'autoUpdateCheck';
 

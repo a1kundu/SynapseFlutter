@@ -1,4 +1,4 @@
-package in.arijitk.synapse
+package `in`.arijitk.synapse
 
 import io.flutter.embedding.android.FlutterActivity
 

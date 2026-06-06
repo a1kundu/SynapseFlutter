@@ -341,7 +341,7 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(7),
                 child: Image.asset(
-                  'assets/icons/icon-96x96.png',
+                  'assets/icons/app_icon.png',
                   width: 14,
                   height: 14,
                 ),
@@ -382,7 +382,7 @@ class _EmptyState extends StatelessWidget {
           children: [
             ClipOval(
               child: Image.asset(
-                'assets/icons/icon-96x96.png',
+                'assets/icons/app_icon.png',
                 width: 72,
                 height: 72,
               ),
@@ -448,7 +448,7 @@ class _MessageBubble extends StatelessWidget {
                 if (!isUser) ...[
                   ClipOval(
                     child: Image.asset(
-                      'assets/icons/icon-96x96.png',
+                      'assets/icons/app_icon.png',
                       width: 14,
                       height: 14,
                     ),

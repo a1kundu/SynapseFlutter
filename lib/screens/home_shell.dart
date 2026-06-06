@@ -73,7 +73,7 @@ class _HomeShellState extends State<HomeShell> {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: Image.asset(
-                'assets/icons/icon-96x96.png',
+                'assets/icons/app_icon.png',
                 width: 32,
                 height: 32,
               ),

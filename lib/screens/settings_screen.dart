@@ -223,119 +223,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
 
-                  // ── System Prompt section ──────────────────────────────
-                  const SectionHeader(title: 'System Prompt'),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Base prompt (always included):',
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(color: cs.onSurface),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest.withValues(
-                                alpha: 0.5,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'You are Synapse, a helpful AI assistant.\n'
-                              'Current date and time: [auto-populated]',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                    fontFamily: 'monospace',
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Custom instructions (appended to base prompt):',
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(color: cs.onSurface),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _systemPromptController,
-                            onChanged: _onSystemPromptChanged,
-                            maxLines: 6,
-                            minLines: 3,
-                            decoration: InputDecoration(
-                              hintText:
-                                  'e.g. Always respond in markdown. Be concise...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              helperText:
-                                  'This text is added to every conversation as system instructions.',
-                              helperMaxLines: 2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── Appearance section ────────────────────────────────
-                  const SectionHeader(title: 'Appearance'),
-                  Card(
-                    child: Column(
-                      children: [
-                        _ThemeTile(
-                          icon: Icons.brightness_auto,
-                          title: 'System',
-                          subtitle: 'Follow device theme',
-                          selected: mode == ThemeMode.system,
-                          onTap: () => setThemeMode(ThemeMode.system),
-                        ),
-                        _ThemeTile(
-                          icon: Icons.light_mode,
-                          title: 'Light',
-                          subtitle: 'Always use light theme',
-                          selected: mode == ThemeMode.light,
-                          onTap: () => setThemeMode(ThemeMode.light),
-                        ),
-                        _ThemeTile(
-                          icon: Icons.dark_mode,
-                          title: 'Dark',
-                          subtitle: 'Always use dark theme',
-                          selected: mode == ThemeMode.dark,
-                          onTap: () => setThemeMode(ThemeMode.dark),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Card(
-                    child: ValueListenableBuilder<bool>(
-                      valueListenable: dynamicColorNotifier,
-                      builder: (context, useDynamic, _) {
-                        return SwitchListTile(
-                          secondary: IconBox(
-                            icon: Icons.palette,
-                            colorScheme: cs,
-                          ),
-                          title: const Text('Dynamic color'),
-                          subtitle: const Text(
-                            'Use wallpaper colors (Android 12+)',
-                          ),
-                          value: useDynamic,
-                          onChanged: (v) => setDynamicColor(v),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
                   // ── LLM Provider section ──────────────────────────────
                   const SectionHeader(title: 'LLM Provider'),
                   Card(
@@ -436,6 +323,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
+                  // ── System Prompt section ─────────────────────────────
+                  const SectionHeader(title: 'System Prompt'),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Base prompt (always included):',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest.withValues(
+                                alpha: 0.5,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'You are Synapse, a helpful AI assistant.\n'
+                              'Current date and time: [auto-populated]',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                    fontFamily: 'monospace',
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Custom instructions (appended to base prompt):',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: cs.onSurface),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _systemPromptController,
+                            onChanged: _onSystemPromptChanged,
+                            maxLines: 6,
+                            minLines: 3,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'e.g. Always respond in markdown. Be concise...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              helperText:
+                                  'This text is added to every conversation as system instructions.',
+                              helperMaxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
                   // ── MCP Servers section ───────────────────────────────
                   const SectionHeader(title: 'MCP Servers'),
                   Card(
@@ -503,6 +452,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: _showAddMcpServerDialog,
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Appearance section ────────────────────────────────
+                  const SectionHeader(title: 'Appearance'),
+                  Card(
+                    child: Column(
+                      children: [
+                        _ThemeTile(
+                          icon: Icons.brightness_auto,
+                          title: 'System',
+                          subtitle: 'Follow device theme',
+                          selected: mode == ThemeMode.system,
+                          onTap: () => setThemeMode(ThemeMode.system),
+                        ),
+                        _ThemeTile(
+                          icon: Icons.light_mode,
+                          title: 'Light',
+                          subtitle: 'Always use light theme',
+                          selected: mode == ThemeMode.light,
+                          onTap: () => setThemeMode(ThemeMode.light),
+                        ),
+                        _ThemeTile(
+                          icon: Icons.dark_mode,
+                          title: 'Dark',
+                          subtitle: 'Always use dark theme',
+                          selected: mode == ThemeMode.dark,
+                          onTap: () => setThemeMode(ThemeMode.dark),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: dynamicColorNotifier,
+                      builder: (context, useDynamic, _) {
+                        return SwitchListTile(
+                          secondary: IconBox(
+                            icon: Icons.palette,
+                            colorScheme: cs,
+                          ),
+                          title: const Text('Dynamic color'),
+                          subtitle: const Text(
+                            'Use wallpaper colors (Android 12+)',
+                          ),
+                          value: useDynamic,
+                          onChanged: (v) => setDynamicColor(v),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 24),

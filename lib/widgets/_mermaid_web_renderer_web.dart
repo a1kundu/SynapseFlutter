@@ -50,10 +50,7 @@ class MermaidWebRenderer extends StatefulWidget {
 class _MermaidWebRendererState extends State<MermaidWebRenderer> {
   String? _viewType;
   bool _error = false;
-  // viewBox intrinsic dimensions — used with LayoutBuilder to compute
-  // the scaled height so the SizedBox is never smaller than the SVG.
-  double _vbWidth = 400;
-  double _vbHeight = 200;
+  double _height = 200; // intrinsic viewBox height (set after render)
 
   @override
   void initState() {
@@ -92,9 +89,8 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
       final result = await _mermaidRender(renderId, widget.code).toDart;
       final svg = result.svg;
 
-      // Parse viewBox dimensions: viewBox="minX minY width height"
-      // We need both width and height to compute the aspect ratio so that
-      // LayoutBuilder can set the correct SizedBox height at render time.
+      // Parse viewBox to get intrinsic width and height.
+      // viewBox="minX minY width height"
       double vbW = 400;
       double vbH = 200;
       final vb = RegExp(
@@ -104,32 +100,36 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
         vbW = double.tryParse(vb.group(1)!) ?? vbW;
         vbH = double.tryParse(vb.group(2)!) ?? vbH;
       } else {
-        // Fall back to explicit height attribute only
         final ha = RegExp(r'<svg[^>]+\sheight="([\d.]+)"').firstMatch(svg);
         if (ha != null) vbH = double.tryParse(ha.group(1)!) ?? vbH;
       }
+      final intrinsicWidth = vbW.ceil();
+      final intrinsicHeight = vbH.ceil();
 
-      // Each render needs a unique viewType string because
-      // registerViewFactory is write-once per type.
+      // Each render needs a unique viewType string —
+      // registerViewFactory is write-once per type name.
       final viewType = 'mermaid-view-${_viewCounter++}';
       final svgContent = svg;
 
       ui_web.platformViewRegistry.registerViewFactory(viewType, (_) {
         final div = html.DivElement()
           ..style.width = '100%'
-          ..style.overflowX = 'auto'
+          ..style.overflowX =
+              'auto' // horizontal scroll for wide diagrams
           ..style.overflowY = 'hidden'
           ..style.background = 'transparent'
           ..setInnerHtml(
             svgContent,
-            // The SVG is Mermaid-generated — safe to trust.
             // ignore: deprecated_member_use
             treeSanitizer: html.NodeTreeSanitizer.trusted,
           );
 
-        // Make SVG responsive
+        // Fix the SVG to its intrinsic pixel width so the height is
+        // always exactly the viewBox height — no LayoutBuilder needed.
+        // 'max-width: 100%' ensures it shrinks on narrow containers.
         final svgEl = div.querySelector('svg');
         if (svgEl != null) {
+          svgEl.setAttribute('width', '${intrinsicWidth}px');
           svgEl.style.maxWidth = '100%';
           svgEl.style.height = 'auto';
         }
@@ -139,8 +139,7 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
       if (mounted) {
         setState(() {
           _viewType = viewType;
-          _vbWidth = vbW;
-          _vbHeight = vbH;
+          _height = intrinsicHeight.toDouble() + 16;
         });
       }
     } catch (_) {
@@ -176,17 +175,9 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // SVG fills 100% of container width and scales height proportionally.
-        // Compute the rendered height from the viewBox aspect ratio.
-        final scale = constraints.maxWidth / _vbWidth;
-        final displayedHeight = (_vbHeight * scale) + 16;
-        return SizedBox(
-          height: displayedHeight,
-          child: HtmlElementView(viewType: _viewType!),
-        );
-      },
+    return SizedBox(
+      height: _height,
+      child: HtmlElementView(viewType: _viewType!),
     );
   }
 }

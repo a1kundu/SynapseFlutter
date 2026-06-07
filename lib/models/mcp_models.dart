@@ -54,12 +54,16 @@ class McpTool {
 /// Resolved tool with server info (for UI + system prompt).
 class McpServerTool {
   final String serverName;
-  final McpServerConfig serverConfig;
+  final McpServerConfig? serverConfig;
   final McpTool tool;
+
+  /// True for built-in tools handled locally (not via MCP).
+  final bool isSystemTool;
 
   const McpServerTool({
     required this.serverName,
-    required this.serverConfig,
+    this.serverConfig,
     required this.tool,
+    this.isSystemTool = false,
   });
 }

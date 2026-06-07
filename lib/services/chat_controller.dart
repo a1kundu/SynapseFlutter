@@ -41,6 +41,30 @@ class ChatController extends ChangeNotifier {
   bool isLoadingMcpTools = false;
   String? mcpError;
 
+  // ── System tools (built-in, handled locally) ─────────────────────────
+
+  static const String _systemToolServerName = 'Synapse';
+
+  static final List<McpServerTool> systemTools = [
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'current_date_time',
+        description:
+            'Returns the current local date and time in a human-readable format.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {},
+          'required': [],
+        },
+      ),
+      isSystemTool: true,
+    ),
+  ];
+
+  /// All tools: system + MCP.
+  List<McpServerTool> get allTools => [...systemTools, ...mcpTools];
+
   /// Which tools are enabled for LLM context.
   /// If empty and no explicit selection made, all tools are active.
   Set<String> enabledToolNames = {};
@@ -49,9 +73,9 @@ class ChatController extends ChangeNotifier {
   /// Tools that are currently active (enabled and available).
   List<McpServerTool> get activeTools {
     if (!_hasExplicitToolSelection) {
-      return mcpTools.toList();
+      return allTools;
     }
-    return mcpTools
+    return allTools
         .where((t) => enabledToolNames.contains(t.tool.name))
         .toList();
   }
@@ -262,7 +286,7 @@ class ChatController extends ChangeNotifier {
 
   void enableAllTools() {
     _hasExplicitToolSelection = true;
-    enabledToolNames = mcpTools.map((t) => t.tool.name).toSet();
+    enabledToolNames = allTools.map((t) => t.tool.name).toSet();
     _persistToolSelection();
     notifyListeners();
   }
@@ -362,14 +386,14 @@ class ChatController extends ChangeNotifier {
     mcpError = null;
     notifyListeners();
 
-    final allTools = <McpServerTool>[];
+    final discoveredTools = <McpServerTool>[];
     final errors = <String>[];
 
     for (final server in servers) {
       try {
         final tools = await _mcpClient.discoverTools(server);
         for (final tool in tools) {
-          allTools.add(
+          discoveredTools.add(
             McpServerTool(
               serverName: server.name,
               serverConfig: server,
@@ -384,7 +408,7 @@ class ChatController extends ChangeNotifier {
 
     mcpTools
       ..clear()
-      ..addAll(allTools);
+      ..addAll(discoveredTools);
     mcpError = errors.isNotEmpty ? errors.join('; ') : null;
     isLoadingMcpTools = false;
 
@@ -474,13 +498,13 @@ class ChatController extends ChangeNotifier {
     mcpError = null;
     notifyListeners();
 
-    final allTools = <McpServerTool>[];
+    final discoveredTools = <McpServerTool>[];
     final errors = <String>[];
     for (final server in servers) {
       try {
         final tools = await _mcpClient.discoverTools(server);
         for (final tool in tools) {
-          allTools.add(
+          discoveredTools.add(
             McpServerTool(
               serverName: server.name,
               serverConfig: server,
@@ -495,7 +519,7 @@ class ChatController extends ChangeNotifier {
 
     mcpTools
       ..clear()
-      ..addAll(allTools);
+      ..addAll(discoveredTools);
     mcpError = errors.isNotEmpty ? errors.join('; ') : null;
     isLoadingMcpTools = false;
     notifyListeners();
@@ -601,15 +625,11 @@ class ChatController extends ChangeNotifier {
   ) {
     final history = <ChatRequestMessage>[];
     final settings = SettingsRepository.instance;
-    final now = DateTime.now();
-    final dateTime =
-        '${_weekday(now.weekday)}, ${_month(now.month)} ${now.day}, ${now.year} '
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     // Build system prompt
     final systemParts = <String>[];
     systemParts.add(
-      'You are Synapse, a helpful AI assistant.\nCurrent date and time: $dateTime',
+      'You are Synapse, a helpful AI assistant.',
     );
 
     // User-defined system prompt
@@ -765,7 +785,9 @@ class ChatController extends ChangeNotifier {
           .firstOrNull;
 
       String resultContent;
-      if (serverTool != null) {
+      if (serverTool != null && serverTool.isSystemTool) {
+        resultContent = _executeSystemTool(toolName);
+      } else if (serverTool != null) {
         try {
           Map<String, dynamic> args;
           try {
@@ -774,7 +796,7 @@ class ChatController extends ChangeNotifier {
             args = {};
           }
           resultContent = await _mcpClient.callTool(
-            serverTool.serverConfig,
+            serverTool.serverConfig!,
             toolName,
             args,
           );
@@ -798,6 +820,20 @@ class ChatController extends ChangeNotifier {
 
     // Stream final response without tools to prevent infinite loop
     await _streamWithToolCalling(assistantId, model, extendedHistory, null, []);
+  }
+
+  /// Execute a built-in system tool and return its result.
+  String _executeSystemTool(String toolName) {
+    switch (toolName) {
+      case 'current_date_time':
+        final now = DateTime.now();
+        final dateTime =
+            '${_weekday(now.weekday)}, ${_month(now.month)} ${now.day}, ${now.year} '
+            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+        return dateTime;
+      default:
+        return "Error: Unknown system tool '$toolName'";
+    }
   }
 
   void _updateMessage(String id, {String? content, bool? streaming}) {

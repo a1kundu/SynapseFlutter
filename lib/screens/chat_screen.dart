@@ -242,10 +242,10 @@ class _ChatScreenState extends State<ChatScreen> {
             final cs = Theme.of(context).colorScheme;
             return Container(
               decoration: BoxDecoration(
-                color: cs.surfaceContainerLow,
+                color: cs.surfaceContainerHighest,
                 border: Border(
                   top: BorderSide(
-                    color: cs.outline.withValues(alpha: 0.2),
+                    color: cs.outline.withValues(alpha: 0.4),
                     width: 1,
                   ),
                 ),
@@ -520,14 +520,33 @@ class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
           followerAnchor: Alignment.topRight,
           offset: const Offset(0, 6),
           child: Material(
-            elevation: 8,
-            shadowColor: Colors.black38,
+            elevation: 0,
             borderRadius: BorderRadius.circular(12),
-            color: cs.surfaceContainer,
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: cs.surfaceContainer,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 6),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
             child: Container(
               width: 280,
               constraints: const BoxConstraints(maxHeight: 400),
-              child: Column(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Search field
@@ -700,6 +719,8 @@ class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
                   ),
                 ],
               ),
+            ),
+          ),
             ),
           ),
         ),
@@ -1518,7 +1539,7 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final ctrl = widget.controller;
-    final toolCount = ctrl.mcpTools.length;
+    final toolCount = ctrl.allTools.length;
     final activeCount = ctrl.activeTools.length;
     final error = ctrl.mcpError;
     final isLoading = ctrl.isLoadingMcpTools;
@@ -1547,7 +1568,7 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                     context,
                   ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
-              ] else if (error != null && toolCount == 0) ...[
+              ] else if (error != null && ctrl.mcpTools.isEmpty) ...[
                 Icon(Icons.error_outline, size: 14, color: cs.error),
                 const SizedBox(width: 6),
                 Expanded(
@@ -1618,17 +1639,17 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
             constraints: const BoxConstraints(maxHeight: 200),
             margin: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHigh,
+              color: cs.secondaryContainer,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: cs.outline.withValues(alpha: 0.5),
+                color: cs.secondary.withValues(alpha: 0.4),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 10,
-                  spreadRadius: 1,
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
                   offset: const Offset(0, 2),
                 ),
               ],
@@ -1648,7 +1669,7 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                         'Tool Selection',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: cs.onSurfaceVariant,
+                          color: cs.onSecondaryContainer,
                         ),
                       ),
                       const Spacer(),
@@ -1684,9 +1705,9 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                   child: ListView.builder(
                     shrinkWrap: true,
                     padding: const EdgeInsets.only(bottom: 4),
-                    itemCount: ctrl.mcpTools.length,
+                    itemCount: ctrl.allTools.length,
                     itemBuilder: (context, index) {
-                      final tool = ctrl.mcpTools[index];
+                      final tool = ctrl.allTools[index];
                       final isEnabled = ctrl.enabledToolNames.contains(
                         tool.tool.name,
                       );
@@ -1738,7 +1759,7 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                                 ),
                               ),
                               Text(
-                                tool.serverName,
+                                tool.isSystemTool ? 'System' : tool.serverName,
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: cs.onSurfaceVariant.withValues(

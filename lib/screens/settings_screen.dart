@@ -359,8 +359,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              'You are Synapse, a helpful AI assistant.\n'
-                              'Current date and time: [auto-populated]',
+                              'You are Synapse, a helpful AI assistant.',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: cs.onSurfaceVariant,

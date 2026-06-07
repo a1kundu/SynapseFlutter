@@ -29,6 +29,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  String? _quotedText;
 
   ChatController get _ctrl => widget.controller;
 
@@ -58,6 +59,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onControllerChanged() {
+    // Clear quote when conversation is cleared or session switched.
+    if (_ctrl.messages.isEmpty) _quotedText = null;
     setState(() {});
     if (_ctrl.messages.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -75,8 +78,19 @@ class _ChatScreenState extends State<ChatScreen> {
   void _onSend() {
     final text = _textController.text;
     if (text.trim().isEmpty && _ctrl.pendingAttachments.isEmpty) return;
-    _ctrl.sendMessage(text);
+    // Prepend quoted context if present.
+    final quote = _quotedText;
+    final messageText = quote != null && quote.isNotEmpty
+        ? '> Referring to:\n> ${quote.replaceAll('\n', '\n> ')}\n\n$text'
+        : text;
+    _ctrl.sendMessage(messageText);
     _textController.clear();
+    setState(() => _quotedText = null);
+  }
+
+  void _onQuote(String text) {
+    setState(() => _quotedText = text);
+    _focusNode.requestFocus();
   }
 
   Future<void> _onAttach() async {
@@ -230,6 +244,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onEdit: _showEditDialog,
                       onFork: _forkChat,
                       onRetry: _retryMessage,
+                      onQuote: _onQuote,
                       isGenerating: _ctrl.isGenerating,
                     );
                   },
@@ -261,6 +276,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _McpToolsStatus(controller: _ctrl),
+                  if (_quotedText != null)
+                    _QuotePreview(
+                      text: _quotedText!,
+                      onDismiss: () => setState(() => _quotedText = null),
+                    ),
                   _ChatInputBar(
                     textController: _textController,
                     focusNode: _focusNode,
@@ -848,6 +868,7 @@ class _MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage> onEdit;
   final ValueChanged<String> onFork;
   final ValueChanged<String> onRetry;
+  final ValueChanged<String> onQuote;
   final bool isGenerating;
 
   const _MessageBubble({
@@ -856,6 +877,7 @@ class _MessageBubble extends StatefulWidget {
     required this.onEdit,
     required this.onFork,
     required this.onRetry,
+    required this.onQuote,
     required this.isGenerating,
   });
 
@@ -983,9 +1005,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         ).textTheme.bodyMedium?.copyWith(color: contentColor),
                       )
                     else
-                      _AssistantMarkdown(
+                      _SelectableAssistantMarkdown(
                         content: widget.message.content,
                         contentColor: contentColor,
+                        onQuote: widget.onQuote,
                       ),
                   ] else if (!widget.message.isStreaming &&
                       widget.message.toolCalls.isEmpty)
@@ -1114,7 +1137,7 @@ class _AssistantMarkdown extends StatelessWidget {
 
     return MarkdownBody(
       data: content,
-      selectable: false,
+      selectable: true,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
         p: Theme.of(
@@ -1199,6 +1222,58 @@ class _AssistantMarkdown extends StatelessWidget {
           launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
         }
       },
+    );
+  }
+}
+
+/// Wraps assistant markdown in a SelectionArea with a "Quote" context menu action.
+class _SelectableAssistantMarkdown extends StatefulWidget {
+  final String content;
+  final Color contentColor;
+  final ValueChanged<String> onQuote;
+
+  const _SelectableAssistantMarkdown({
+    required this.content,
+    required this.contentColor,
+    required this.onQuote,
+  });
+
+  @override
+  State<_SelectableAssistantMarkdown> createState() =>
+      _SelectableAssistantMarkdownState();
+}
+
+class _SelectableAssistantMarkdownState
+    extends State<_SelectableAssistantMarkdown> {
+  String _selectedText = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      onSelectionChanged: (content) {
+        _selectedText = content?.plainText ?? '';
+      },
+      contextMenuBuilder: (context, selectableRegionState) {
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: selectableRegionState.contextMenuAnchors,
+          buttonItems: [
+            ...selectableRegionState.contextMenuButtonItems,
+            ContextMenuButtonItem(
+              label: 'Quote',
+              onPressed: () {
+                if (_selectedText.isNotEmpty) {
+                  widget.onQuote(_selectedText);
+                }
+                selectableRegionState.hideToolbar();
+              },
+            ),
+          ],
+        );
+      },
+      child: _AssistantMarkdown(
+        content: widget.content,
+        contentColor: widget.contentColor,
+      ),
     );
   }
 }
@@ -2010,6 +2085,66 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
             ),
           ),
       ],
+    );
+  }
+}
+
+// ── Quote Preview ───────────────────────────────────────────────────────────
+
+class _QuotePreview extends StatelessWidget {
+  final String text;
+  final VoidCallback onDismiss;
+
+  const _QuotePreview({required this.text, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Truncate for display — full text is sent with the message.
+    final displayText = text.length > 120
+        ? '${text.substring(0, 120)}...'
+        : text;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.primaryContainer.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(color: cs.primary, width: 3),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+        child: Row(
+          children: [
+            Icon(Icons.format_quote_rounded, size: 16, color: cs.primary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                displayText.replaceAll('\n', ' '),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onPrimaryContainer,
+                  fontStyle: FontStyle.italic,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+                icon: Icon(Icons.close, color: cs.onPrimaryContainer),
+                onPressed: onDismiss,
+                tooltip: 'Remove quote',
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

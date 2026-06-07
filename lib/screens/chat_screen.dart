@@ -1618,12 +1618,20 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
             constraints: const BoxConstraints(maxHeight: 200),
             margin: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
+              color: cs.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.5),
+                color: cs.outline.withValues(alpha: 0.5),
                 width: 1,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

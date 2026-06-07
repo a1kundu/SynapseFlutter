@@ -1733,8 +1733,8 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                     itemCount: ctrl.allTools.length,
                     itemBuilder: (context, index) {
                       final tool = ctrl.allTools[index];
-                      final isEnabled = ctrl.enabledToolNames.contains(
-                        tool.tool.name,
+                      final isEnabled = ctrl.activeTools.any(
+                        (t) => t.tool.name == tool.tool.name,
                       );
                       return InkWell(
                         onTap: () => ctrl.toggleTool(tool.tool.name),

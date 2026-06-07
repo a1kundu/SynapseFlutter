@@ -50,7 +50,10 @@ class MermaidWebRenderer extends StatefulWidget {
 class _MermaidWebRendererState extends State<MermaidWebRenderer> {
   String? _viewType;
   bool _error = false;
-  double _height = 200;
+  // viewBox intrinsic dimensions — used with LayoutBuilder to compute
+  // the scaled height so the SizedBox is never smaller than the SVG.
+  double _vbWidth = 400;
+  double _vbHeight = 200;
 
   @override
   void initState() {
@@ -89,18 +92,21 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
       final result = await _mermaidRender(renderId, widget.code).toDart;
       final svg = result.svg;
 
-      // Parse the intrinsic height from the SVG viewBox attribute.
-      // viewBox="minX minY width height"
-      double h = 200;
+      // Parse viewBox dimensions: viewBox="minX minY width height"
+      // We need both width and height to compute the aspect ratio so that
+      // LayoutBuilder can set the correct SizedBox height at render time.
+      double vbW = 400;
+      double vbH = 200;
       final vb = RegExp(
-        'viewBox=["\']\\s*[\\d.]+\\s+[\\d.]+\\s+[\\d.]+\\s+([\\d.]+)',
+        'viewBox=["\']\\s*[\\d.]+\\s+[\\d.]+\\s+([\\d.]+)\\s+([\\d.]+)',
       ).firstMatch(svg);
       if (vb != null) {
-        h = double.tryParse(vb.group(1)!) ?? h;
+        vbW = double.tryParse(vb.group(1)!) ?? vbW;
+        vbH = double.tryParse(vb.group(2)!) ?? vbH;
       } else {
-        // Fall back to explicit height attribute
+        // Fall back to explicit height attribute only
         final ha = RegExp(r'<svg[^>]+\sheight="([\d.]+)"').firstMatch(svg);
-        if (ha != null) h = double.tryParse(ha.group(1)!) ?? h;
+        if (ha != null) vbH = double.tryParse(ha.group(1)!) ?? vbH;
       }
 
       // Each render needs a unique viewType string because
@@ -133,7 +139,8 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
       if (mounted) {
         setState(() {
           _viewType = viewType;
-          _height = h + 16;
+          _vbWidth = vbW;
+          _vbHeight = vbH;
         });
       }
     } catch (_) {
@@ -169,9 +176,17 @@ class _MermaidWebRendererState extends State<MermaidWebRenderer> {
       );
     }
 
-    return SizedBox(
-      height: _height,
-      child: HtmlElementView(viewType: _viewType!),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // SVG fills 100% of container width and scales height proportionally.
+        // Compute the rendered height from the viewBox aspect ratio.
+        final scale = constraints.maxWidth / _vbWidth;
+        final displayedHeight = (_vbHeight * scale) + 16;
+        return SizedBox(
+          height: displayedHeight,
+          child: HtmlElementView(viewType: _viewType!),
+        );
+      },
     );
   }
 }

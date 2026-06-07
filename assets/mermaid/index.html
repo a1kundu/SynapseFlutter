@@ -46,6 +46,7 @@
 
       const container = document.getElementById('diagram');
       const errorEl = document.getElementById('error');
+      errorEl.style.display = 'none';
 
       // Unique id required by mermaid
       const id = 'mermaid-' + Date.now();
@@ -53,21 +54,30 @@
         source.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
 
       mermaid.run({ nodes: [document.getElementById(id)] })
-        .then(() => {
-          reportHeight();
-        })
+        .then(() => reportHeight())
         .catch((err) => {
-          errorEl.textContent = 'Render error: ' + (err.message || err);
+          errorEl.textContent = 'Render error: ' + (err.message || String(err));
           errorEl.style.display = 'block';
           reportHeight();
         });
     }
 
     function reportHeight() {
-      // Give browser a frame to finish layout
+      // Double RAF to ensure SVG layout is fully committed before measuring.
       requestAnimationFrame(() => {
-        const h = Math.ceil(document.documentElement.scrollHeight);
-        HeightChannel.postMessage(String(h));
+        requestAnimationFrame(() => {
+          let h = 0;
+          const svg = document.querySelector('#diagram svg');
+          if (svg) {
+            h = Math.ceil(svg.getBoundingClientRect().height);
+          }
+          if (h <= 0) {
+            h = Math.ceil(document.documentElement.scrollHeight);
+          }
+          if (window.HeightChannel && h > 0) {
+            window.HeightChannel.postMessage(String(h));
+          }
+        });
       });
     }
   </script>

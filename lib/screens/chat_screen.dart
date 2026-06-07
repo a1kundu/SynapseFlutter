@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_models.dart';
 import '../services/chat_controller.dart';
 import '../utils/snackbar_service.dart';
-import '../widgets/mermaid_view.dart';
+import '../widgets/mermaid_view.dart'; // MermaidView
 import 'package:markdown/markdown.dart' as md;
 
 /// Main chat screen displaying conversation messages with markdown rendering,
@@ -713,25 +713,41 @@ class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
                                               ),
                                               if (model.supportsTools)
                                                 Padding(
-                                                  padding: const EdgeInsets.only(right: 6),
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 6,
+                                                      ),
                                                   child: Tooltip(
-                                                    message: 'Supports tool calling',
+                                                    message:
+                                                        'Supports tool calling',
                                                     child: Icon(
-                                                      Icons.build_circle_outlined,
+                                                      Icons
+                                                          .build_circle_outlined,
                                                       size: 14,
-                                                      color: cs.primary.withValues(alpha: 0.7),
+                                                      color: cs.primary
+                                                          .withValues(
+                                                            alpha: 0.7,
+                                                          ),
                                                     ),
                                                   ),
                                                 )
                                               else
                                                 Padding(
-                                                  padding: const EdgeInsets.only(right: 6),
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 6,
+                                                      ),
                                                   child: Tooltip(
-                                                    message: 'No tool calling support',
+                                                    message:
+                                                        'No tool calling support',
                                                     child: Icon(
-                                                      Icons.build_circle_outlined,
+                                                      Icons
+                                                          .build_circle_outlined,
                                                       size: 14,
-                                                      color: cs.onSurfaceVariant.withValues(alpha: 0.25),
+                                                      color: cs.onSurfaceVariant
+                                                          .withValues(
+                                                            alpha: 0.25,
+                                                          ),
                                                     ),
                                                   ),
                                                 ),
@@ -1226,7 +1242,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
       // Render Mermaid locally using bundled mermaid.min.js via WebView.
       // The widget self-reports its rendered height so it sizes correctly
       // inside the chat list. Theme changes are passed directly to the widget.
-      codeContent = MermaidWebView(
+      codeContent = MermaidView(
         key: ValueKey('mermaid-${text.hashCode}-$isDark'),
         code: text,
         isDark: isDark,

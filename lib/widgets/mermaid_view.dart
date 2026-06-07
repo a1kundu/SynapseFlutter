@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 // Conditional import: on web the real JS-interop renderer is used;
@@ -30,6 +31,10 @@ class MermaidView extends StatelessWidget {
 // Native renderer: WebView + bundled mermaid.min.js
 // ---------------------------------------------------------------------------
 
+// Shared cache: the 3.3 MB mermaid.js is read from disk once per app session.
+// rootBundle itself also caches, but this avoids even the Future overhead.
+String? _mermaidJsCache;
+
 class _MermaidNativeWebView extends StatefulWidget {
   final String code;
   final bool isDark;
@@ -42,9 +47,7 @@ class _MermaidNativeWebView extends StatefulWidget {
 
 class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   late final WebViewController _controller;
-  // Start at a generous height so the WebView has room to render Mermaid
-  // at its natural size before HeightChannel reports back.
-  double _height = 400;
+  double _height = 300;
 
   static const _darkBg = Color(0xFF282C34);
   static const _lightBg = Color(0xFFF5F5F5);
@@ -63,23 +66,12 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
           final h = double.tryParse(msg.message);
           if (h != null && h > 16) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                setState(() => _height = h + 24);
-              }
+              if (mounted) setState(() => _height = h + 16);
             });
           }
         },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _injectDiagram();
-            });
-          },
-        ),
-      )
-      ..loadFlutterAsset('assets/mermaid/index.html');
+      );
+    _loadPage();
   }
 
   @override
@@ -89,17 +81,66 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
       if (old.isDark != widget.isDark) {
         _controller.setBackgroundColor(_bgColor);
       }
-      _injectDiagram();
+      _loadPage();
     }
   }
 
-  void _injectDiagram() {
+  Future<void> _loadPage() async {
+    // Inline mermaid.js directly into the HTML so there are no relative-path
+    // URL resolution issues on Android (loadFlutterAsset + <script src> is
+    // unreliable — mermaid.min.js silently fails to load, leaving window.mermaid
+    // undefined and the diagram blank). rootBundle caches after first read.
+    _mermaidJsCache ??= await rootBundle.loadString(
+      'assets/mermaid/mermaid.min.js',
+    );
+    if (!mounted) return;
+
     final bg = widget.isDark ? '#282C34' : '#F5F5F5';
     final theme = widget.isDark ? 'dark' : 'default';
-    final encoded = jsonEncode(widget.code);
-    _controller.runJavaScript(
-      'setBackground("$bg"); renderDiagram($encoded, "$theme");',
-    );
+    // jsonEncode produces a valid JS string literal (escapes \n, ", etc.)
+    final src = jsonEncode(widget.code);
+
+    final html =
+        '<!DOCTYPE html>'
+        '<html><head>'
+        '<meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">'
+        '<style>'
+        'html,body{margin:0;padding:0;background:$bg;}'
+        '#wrap{padding:8px;overflow-x:auto;}'
+        '#wrap svg{display:block;}'
+        '</style>'
+        '<script>${_mermaidJsCache!}</script>'
+        '</head><body>'
+        '<div id="wrap"></div>'
+        '<script>'
+        '(function(){'
+        'mermaid.initialize({'
+        'startOnLoad:false,'
+        'theme:"$theme",'
+        'securityLevel:"loose",'
+        'flowchart:{useMaxWidth:true},'
+        'sequence:{useMaxWidth:true}'
+        '});'
+        'var wrap=document.getElementById("wrap");'
+        'var el=document.createElement("div");'
+        'el.id="mermaid-diagram";'
+        'el.textContent=$src;'
+        'wrap.appendChild(el);'
+        'mermaid.run({nodes:[el]})'
+        '.then(report)'
+        '.catch(function(e){wrap.innerHTML="<pre style=\'color:#e06c75;padding:8px\'>"+(e.message||String(e))+"</pre>";report();});'
+        'function report(){'
+        'requestAnimationFrame(function(){'
+        'requestAnimationFrame(function(){'
+        'var h=Math.ceil(document.documentElement.scrollHeight);'
+        'if(window.HeightChannel&&h>0)HeightChannel.postMessage(String(h));'
+        '});});}'
+        '})();'
+        '</script>'
+        '</body></html>';
+
+    _controller.loadHtmlString(html);
   }
 
   @override

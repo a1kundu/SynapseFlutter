@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 // Conditional import: on web the real JS-interop renderer is used;
@@ -31,10 +30,6 @@ class MermaidView extends StatelessWidget {
 // Native renderer: WebView + bundled mermaid.min.js
 // ---------------------------------------------------------------------------
 
-// Shared cache: the 3.3 MB mermaid.js is read from disk once per app session.
-// rootBundle itself also caches, but this avoids even the Future overhead.
-String? _mermaidJsCache;
-
 class _MermaidNativeWebView extends StatefulWidget {
   final String code;
   final bool isDark;
@@ -48,6 +43,8 @@ class _MermaidNativeWebView extends StatefulWidget {
 class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   late final WebViewController _controller;
   double _height = 300;
+  bool _mermaidReady = false;
+  bool _pageLoaded = false;
 
   static const _darkBg = Color(0xFF282C34);
   static const _lightBg = Color(0xFFF5F5F5);
@@ -70,8 +67,39 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
             });
           }
         },
-      );
-    _loadPage();
+      )
+      ..addJavaScriptChannel(
+        'ReadyChannel',
+        onMessageReceived: (msg) {
+          _mermaidReady = true;
+          // mermaid.js is parsed and ready — if the page already finished
+          // loading and we haven't rendered yet, inject now.
+          // (The JS side also handles pending renders, but this is a safety net.)
+          if (_pageLoaded && mounted) {
+            _injectDiagram();
+          }
+        },
+      )
+      ..addJavaScriptChannel(
+        'ErrorChannel',
+        onMessageReceived: (msg) {
+          debugPrint('[MermaidView] JS error: ${msg.message}');
+        },
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            _pageLoaded = true;
+            // Defer one frame so the RenderObject is attached before setState.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _injectDiagram();
+            });
+          },
+        ),
+      )
+      // loadFlutterAsset sets up WebViewAssetLoader on Android so relative
+      // <script src="mermaid.min.js"> resolves correctly from the same dir.
+      ..loadFlutterAsset('assets/mermaid/index.html');
   }
 
   @override
@@ -81,66 +109,27 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
       if (old.isDark != widget.isDark) {
         _controller.setBackgroundColor(_bgColor);
       }
-      _loadPage();
+      _injectDiagram();
     }
   }
 
-  Future<void> _loadPage() async {
-    // Inline mermaid.js directly into the HTML so there are no relative-path
-    // URL resolution issues on Android (loadFlutterAsset + <script src> is
-    // unreliable — mermaid.min.js silently fails to load, leaving window.mermaid
-    // undefined and the diagram blank). rootBundle caches after first read.
-    _mermaidJsCache ??= await rootBundle.loadString(
-      'assets/mermaid/mermaid.min.js',
-    );
-    if (!mounted) return;
-
+  void _injectDiagram() {
     final bg = widget.isDark ? '#282C34' : '#F5F5F5';
     final theme = widget.isDark ? 'dark' : 'default';
-    // jsonEncode produces a valid JS string literal (escapes \n, ", etc.)
-    final src = jsonEncode(widget.code);
+    final encoded = jsonEncode(widget.code);
+    // renderDiagram() in index.html now queues the render if mermaid isn't
+    // ready yet, so it's safe to call this early.
+    _controller.runJavaScript(
+      'setBackground("$bg"); renderDiagram($encoded, "$theme");',
+    );
+  }
 
-    final html =
-        '<!DOCTYPE html>'
-        '<html><head>'
-        '<meta charset="UTF-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">'
-        '<style>'
-        'html,body{margin:0;padding:0;background:$bg;}'
-        '#wrap{padding:8px;overflow-x:auto;}'
-        '#wrap svg{display:block;}'
-        '</style>'
-        '<script>${_mermaidJsCache!}</script>'
-        '</head><body>'
-        '<div id="wrap"></div>'
-        '<script>'
-        '(function(){'
-        'mermaid.initialize({'
-        'startOnLoad:false,'
-        'theme:"$theme",'
-        'securityLevel:"loose",'
-        'flowchart:{useMaxWidth:true},'
-        'sequence:{useMaxWidth:true}'
-        '});'
-        'var wrap=document.getElementById("wrap");'
-        'var el=document.createElement("div");'
-        'el.id="mermaid-diagram";'
-        'el.textContent=$src;'
-        'wrap.appendChild(el);'
-        'mermaid.run({nodes:[el]})'
-        '.then(report)'
-        '.catch(function(e){wrap.innerHTML="<pre style=\'color:#e06c75;padding:8px\'>"+(e.message||String(e))+"</pre>";report();});'
-        'function report(){'
-        'requestAnimationFrame(function(){'
-        'requestAnimationFrame(function(){'
-        'var h=Math.ceil(document.documentElement.scrollHeight);'
-        'if(window.HeightChannel&&h>0)HeightChannel.postMessage(String(h));'
-        '});});}'
-        '})();'
-        '</script>'
-        '</body></html>';
-
-    _controller.loadHtmlString(html);
+  @override
+  void dispose() {
+    // WebViewController doesn't have a dispose() method in webview_flutter 4.x,
+    // but clearing the page helps release resources.
+    _controller.loadRequest(Uri.parse('about:blank'));
+    super.dispose();
   }
 
   @override

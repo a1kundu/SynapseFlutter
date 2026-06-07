@@ -57,6 +57,7 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
     _controller = WebViewController()
       ..setBackgroundColor(_bgColor)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..enableZoom(true)
       ..addJavaScriptChannel(
         'HeightChannel',
         onMessageReceived: (msg) {

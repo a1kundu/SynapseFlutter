@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_models.dart';
 import '../services/chat_controller.dart';
 import '../utils/snackbar_service.dart';
+import '../widgets/mermaid_view.dart';
 import 'package:markdown/markdown.dart' as md;
 
 /// Main chat screen displaying conversation messages with markdown rendering,
@@ -1198,70 +1199,13 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
 
     Widget codeContent;
     if (isMermaid) {
-      // Render Mermaid as an actual graph via mermaid.ink
-      // Inject theme directive into the diagram source for dark mode
-      final mermaidSource = isDark
-          ? '%%{init: {"theme":"dark"}}%%\n$text'
-          : text;
-      final encoded = base64.encode(utf8.encode(mermaidSource));
-      final imageUrl = 'https://mermaid.ink/img/$encoded';
-      codeContent = Image.network(
-        imageUrl,
-        fit: BoxFit.contain,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                          loadingProgress.expectedTotalBytes!
-                    : null,
-              ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          // Fallback: show the raw Mermaid code if rendering fails
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF6B6B).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 14,
-                      color: labelColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Diagram render failed — showing source',
-                      style: TextStyle(fontSize: 11, color: labelColor),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                text,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                  color: textColor,
-                ),
-              ),
-            ],
-          );
-        },
+      // Render Mermaid locally using bundled mermaid.min.js via WebView.
+      // The widget self-reports its rendered height so it sizes correctly
+      // inside the chat list. Theme changes are passed directly to the widget.
+      codeContent = MermaidWebView(
+        key: ValueKey('mermaid-${text.hashCode}-$isDark'),
+        code: text,
+        isDark: isDark,
       );
     } else {
       try {
@@ -1533,7 +1477,9 @@ class _ToolCallTileState extends State<_ToolCallTile> {
         children: [
           // Header row (tap to expand)
           InkWell(
-            onTap: hasResult ? () => setState(() => _expanded = !_expanded) : null,
+            onTap: hasResult
+                ? () => setState(() => _expanded = !_expanded)
+                : null,
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),

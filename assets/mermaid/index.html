@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 8px;
+      background: transparent;
+      overflow-x: auto;
+      overflow-y: hidden;
+      box-sizing: border-box;
+    }
+    #diagram {
+      display: block;
+      min-width: 0;
+    }
+    #diagram svg {
+      max-width: 100%;
+      height: auto;
+    }
+    #error {
+      font-family: monospace;
+      font-size: 12px;
+      color: #e06c75;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+    }
+  </style>
+  <script src="mermaid.min.js"></script>
+</head>
+<body>
+  <div id="diagram"></div>
+  <pre id="error"></pre>
+  <script>
+    function renderDiagram(source, theme) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: theme,
+        securityLevel: 'loose',
+        flowchart: { useMaxWidth: true },
+        sequence: { useMaxWidth: true },
+      });
+
+      const container = document.getElementById('diagram');
+      const errorEl = document.getElementById('error');
+
+      // Unique id required by mermaid
+      const id = 'mermaid-' + Date.now();
+      container.innerHTML = '<div class="mermaid" id="' + id + '">' +
+        source.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+
+      mermaid.run({ nodes: [document.getElementById(id)] })
+        .then(() => {
+          reportHeight();
+        })
+        .catch((err) => {
+          errorEl.textContent = 'Render error: ' + (err.message || err);
+          errorEl.style.display = 'block';
+          reportHeight();
+        });
+    }
+
+    function reportHeight() {
+      // Give browser a frame to finish layout
+      requestAnimationFrame(() => {
+        const h = Math.ceil(document.documentElement.scrollHeight);
+        HeightChannel.postMessage(String(h));
+      });
+    }
+  </script>
+</body>
+</html>

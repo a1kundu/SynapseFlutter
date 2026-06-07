@@ -576,9 +576,18 @@ class ChatController extends ChangeNotifier {
 
       final tools = activeTools;
       final hasTools = tools.isNotEmpty;
-      final conversationHistory = _buildConversationHistory(assistantId, tools);
-
       final modelSupportsTools = currentModel.supportsTools;
+
+      // Only describe tools in the system prompt when the model does NOT
+      // support native function calling.  When function calling IS supported
+      // the tools are sent via the API `tools` parameter and describing them
+      // again in the prompt causes many models to output raw JSON instead of
+      // using the proper tool-call mechanism.
+      final conversationHistory = _buildConversationHistory(
+        assistantId,
+        modelSupportsTools ? const [] : tools,
+      );
+
       final openAiTools = (hasTools && modelSupportsTools)
           ? tools
                 .map(

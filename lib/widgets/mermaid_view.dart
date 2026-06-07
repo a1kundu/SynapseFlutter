@@ -132,8 +132,12 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
 
   @override
   Widget build(BuildContext context) {
+    // Use screen width as a bounded constraint so the WebView can render
+    // inside a horizontal SingleChildScrollView (which gives unbounded width).
+    // The HTML has useMaxWidth: true so the diagram fits within this width.
+    final screenWidth = MediaQuery.sizeOf(context).width;
     return SizedBox(
-      width: double.infinity,
+      width: screenWidth,
       height: _height,
       child: WebViewWidget(controller: _controller),
     );

@@ -708,25 +708,38 @@ class _AddMcpServerDialog extends StatefulWidget {
 class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
   final _nameController = TextEditingController();
   final _urlController = TextEditingController();
+  final _tokenController = TextEditingController();
+  final _headerNameController = TextEditingController();
+  final _headerValueController = TextEditingController();
   McpTransportType _transportType = McpTransportType.httpStreamable;
+  McpAuthType _authType = McpAuthType.none;
   String? _nameError;
   String? _urlError;
+  String? _authError;
+  bool _obscureToken = true;
 
   @override
   void dispose() {
     _nameController.dispose();
     _urlController.dispose();
+    _tokenController.dispose();
+    _headerNameController.dispose();
+    _headerValueController.dispose();
     super.dispose();
   }
 
   void _onAdd() {
     final name = _nameController.text.trim();
     final url = _urlController.text.trim();
+    final token = _tokenController.text.trim();
+    final headerName = _headerNameController.text.trim();
+    final headerValue = _headerValueController.text.trim();
     bool valid = true;
 
     setState(() {
       _nameError = null;
       _urlError = null;
+      _authError = null;
 
       if (name.isEmpty) {
         _nameError = 'Name is required';
@@ -739,10 +752,29 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
         _urlError = 'Must start with http:// or https://';
         valid = false;
       }
+
+      // Validate auth fields
+      if (_authType == McpAuthType.bearer && token.isEmpty) {
+        _authError = 'Bearer token is required';
+        valid = false;
+      } else if (_authType == McpAuthType.customHeader) {
+        if (headerName.isEmpty || headerValue.isEmpty) {
+          _authError = 'Both header name and value are required';
+          valid = false;
+        }
+      }
     });
 
     if (valid) {
-      widget.onAdd(McpServerConfig(name: name, url: url, type: _transportType));
+      widget.onAdd(McpServerConfig(
+        name: name,
+        url: url,
+        type: _transportType,
+        authType: _authType,
+        authToken: _authType == McpAuthType.bearer ? token : null,
+        authHeaderName: _authType == McpAuthType.customHeader ? headerName : null,
+        authHeaderValue: _authType == McpAuthType.customHeader ? headerValue : null,
+      ));
     }
   }
 
@@ -750,88 +782,216 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Add MCP Server'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Name',
-                hintText: 'e.g. My Tools Server',
-                errorText: _nameError,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'e.g. My Tools Server',
+                  errorText: _nameError,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                onChanged: (_) {
+                  if (_nameError != null) {
+                    setState(() => _nameError = null);
+                  }
+                },
               ),
-              onChanged: (_) {
-                if (_nameError != null) {
-                  setState(() => _nameError = null);
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _urlController,
-              decoration: InputDecoration(
-                labelText: 'Server URL',
-                hintText: 'https://example.com/mcp',
-                errorText: _urlError,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _urlController,
+                decoration: InputDecoration(
+                  labelText: 'Server URL',
+                  hintText: 'https://example.com/mcp',
+                  errorText: _urlError,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                onChanged: (_) {
+                  if (_urlError != null) {
+                    setState(() => _urlError = null);
+                  }
+                },
               ),
-              onChanged: (_) {
-                if (_urlError != null) {
-                  setState(() => _urlError = null);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Transport Type',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            const SizedBox(height: 8),
-            Builder(
-              builder: (context) {
-                final cs = Theme.of(context).colorScheme;
-                return Wrap(
-                  spacing: 8,
-                  children: McpTransportType.values.map((type) {
-                    final isSelected = _transportType == type;
-                    return FilterChip(
-                      selected: isSelected,
-                      label: Text(
-                        type == McpTransportType.httpStreamable
-                            ? 'HTTP Streamable'
-                            : 'SSE',
+              const SizedBox(height: 16),
+              Text(
+                'Transport Type',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              Builder(
+                builder: (context) {
+                  final cs = Theme.of(context).colorScheme;
+                  return Wrap(
+                    spacing: 8,
+                    children: McpTransportType.values.map((type) {
+                      final isSelected = _transportType == type;
+                      return FilterChip(
+                        selected: isSelected,
+                        label: Text(
+                          type == McpTransportType.httpStreamable
+                              ? 'HTTP Streamable'
+                              : 'SSE',
+                        ),
+                        onSelected: (_) {
+                          setState(() => _transportType = type);
+                        },
+                        showCheckmark: true,
+                        selectedColor: cs.primaryContainer,
+                        checkmarkColor: cs.onPrimaryContainer,
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? cs.onPrimaryContainer
+                              : cs.onSurface,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                        side: BorderSide(
+                          color: isSelected ? cs.primary : cs.outline,
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 12),
+              Text(
+                'Authentication',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              Builder(
+                builder: (context) {
+                  final cs = Theme.of(context).colorScheme;
+                  return Wrap(
+                    spacing: 8,
+                    children: McpAuthType.values.map((authType) {
+                      final isSelected = _authType == authType;
+                      final label = switch (authType) {
+                        McpAuthType.none => 'None',
+                        McpAuthType.bearer => 'Bearer Token',
+                        McpAuthType.customHeader => 'Custom Header',
+                      };
+                      return FilterChip(
+                        selected: isSelected,
+                        label: Text(label),
+                        onSelected: (_) {
+                          setState(() {
+                            _authType = authType;
+                            _authError = null;
+                          });
+                        },
+                        showCheckmark: true,
+                        selectedColor: cs.primaryContainer,
+                        checkmarkColor: cs.onPrimaryContainer,
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? cs.onPrimaryContainer
+                              : cs.onSurface,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                        side: BorderSide(
+                          color: isSelected ? cs.primary : cs.outline,
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              if (_authType == McpAuthType.bearer) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _tokenController,
+                  obscureText: _obscureToken,
+                  decoration: InputDecoration(
+                    labelText: 'Bearer Token',
+                    hintText: 'Enter your API token',
+                    errorText: _authError,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureToken
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                       ),
-                      onSelected: (_) {
-                        setState(() => _transportType = type);
+                      onPressed: () {
+                        setState(() => _obscureToken = !_obscureToken);
                       },
-                      showCheckmark: true,
-                      selectedColor: cs.primaryContainer,
-                      checkmarkColor: cs.onPrimaryContainer,
-                      labelStyle: TextStyle(
-                        color: isSelected
-                            ? cs.onPrimaryContainer
-                            : cs.onSurface,
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.normal,
+                    ),
+                  ),
+                  onChanged: (_) {
+                    if (_authError != null) {
+                      setState(() => _authError = null);
+                    }
+                  },
+                ),
+              ],
+              if (_authType == McpAuthType.customHeader) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _headerNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Header Name',
+                    hintText: 'e.g. X-API-Key',
+                    errorText: _authError,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onChanged: (_) {
+                    if (_authError != null) {
+                      setState(() => _authError = null);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _headerValueController,
+                  obscureText: _obscureToken,
+                  decoration: InputDecoration(
+                    labelText: 'Header Value',
+                    hintText: 'Enter the header value',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureToken
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                       ),
-                      side: BorderSide(
-                        color: isSelected ? cs.primary : cs.outline,
-                        width: isSelected ? 1.5 : 1.0,
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
+                      onPressed: () {
+                        setState(() => _obscureToken = !_obscureToken);
+                      },
+                    ),
+                  ),
+                  onChanged: (_) {
+                    if (_authError != null) {
+                      setState(() => _authError = null);
+                    }
+                  },
+                ),
+              ],
+            ],
+          ),
         ),
       ),
       actions: [

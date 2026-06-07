@@ -12,7 +12,7 @@ class McpClient {
     try {
       final postUrl = switch (server.type) {
         McpTransportType.httpStreamable => server.url,
-        McpTransportType.sse => await _discoverSsePostEndpoint(server.url),
+        McpTransportType.sse => await _discoverSsePostEndpoint(server.url, server.authHeaders),
       };
 
       // 1. Initialize
@@ -20,13 +20,13 @@ class McpClient {
         'protocolVersion': '2025-03-26',
         'capabilities': {},
         'clientInfo': {'name': 'Synapse', 'version': '1.0.0'},
-      });
+      }, authHeaders: server.authHeaders);
 
       // 2. Notify initialized
-      await _sendNotification(postUrl, 'notifications/initialized');
+      await _sendNotification(postUrl, 'notifications/initialized', authHeaders: server.authHeaders);
 
       // 3. List tools
-      final toolsResult = await _sendJsonRpc(postUrl, 'tools/list', {});
+      final toolsResult = await _sendJsonRpc(postUrl, 'tools/list', {}, authHeaders: server.authHeaders);
       final tools = (toolsResult['tools'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       return tools.map((t) => McpTool(
         name: t['name'] as String,
@@ -47,7 +47,7 @@ class McpClient {
     try {
       final postUrl = switch (server.type) {
         McpTransportType.httpStreamable => server.url,
-        McpTransportType.sse => await _discoverSsePostEndpoint(server.url),
+        McpTransportType.sse => await _discoverSsePostEndpoint(server.url, server.authHeaders),
       };
 
       // Re-initialize before tool call (MCP requires it)
@@ -55,13 +55,13 @@ class McpClient {
         'protocolVersion': '2025-03-26',
         'capabilities': {},
         'clientInfo': {'name': 'Synapse', 'version': '1.0.0'},
-      });
-      await _sendNotification(postUrl, 'notifications/initialized');
+      }, authHeaders: server.authHeaders);
+      await _sendNotification(postUrl, 'notifications/initialized', authHeaders: server.authHeaders);
 
       final result = await _sendJsonRpc(postUrl, 'tools/call', {
         'name': toolName,
         'arguments': arguments,
-      });
+      }, authHeaders: server.authHeaders);
 
       final isError = result['isError'] as bool? ?? false;
       final content = (result['content'] as List?)?.cast<Map<String, dynamic>>() ?? [];
@@ -74,11 +74,12 @@ class McpClient {
     }
   }
 
-  Future<String> _discoverSsePostEndpoint(String sseUrl) async {
+  Future<String> _discoverSsePostEndpoint(String sseUrl, Map<String, String> authHeaders) async {
     final client = http.Client();
     try {
       final request = http.Request('GET', Uri.parse(sseUrl));
       request.headers['Accept'] = 'text/event-stream';
+      request.headers.addAll(authHeaders);
       final response = await client.send(request);
 
       await for (final chunk in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
@@ -105,8 +106,9 @@ class McpClient {
   Future<Map<String, dynamic>> _sendJsonRpc(
     String url,
     String method,
-    Map<String, dynamic>? params,
-  ) async {
+    Map<String, dynamic>? params, {
+    Map<String, String> authHeaders = const {},
+  }) async {
     final id = _nextId();
     final request = <String, dynamic>{
       'jsonrpc': '2.0',
@@ -115,12 +117,15 @@ class McpClient {
     };
     if (params != null) request['params'] = params;
 
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      ...authHeaders,
+    };
+
     final response = await http.post(
       Uri.parse(url),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
-      },
+      headers: headers,
       body: jsonEncode(request),
     );
 
@@ -153,17 +158,25 @@ class McpClient {
     return (rpcResponse['result'] as Map<String, dynamic>?) ?? {};
   }
 
-  Future<void> _sendNotification(String url, String method) async {
+  Future<void> _sendNotification(
+    String url,
+    String method, {
+    Map<String, String> authHeaders = const {},
+  }) async {
     final request = <String, dynamic>{
       'jsonrpc': '2.0',
       'method': method,
     };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      ...authHeaders,
+    };
+
     await http.post(
       Uri.parse(url),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
-      },
+      headers: headers,
       body: jsonEncode(request),
     );
   }

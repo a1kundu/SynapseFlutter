@@ -318,6 +318,7 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
   void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
+    if (mounted) setState(() {});
   }
 
   void _toggleOverlay() {
@@ -340,6 +341,7 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
       ),
     );
     Overlay.of(context).insert(_overlayEntry!);
+    setState(() {});
   }
 
   @override
@@ -514,8 +516,8 @@ class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
         // Dropdown panel
         CompositedTransformFollower(
           link: widget.layerLink,
-          targetAnchor: Alignment.bottomLeft,
-          followerAnchor: Alignment.topLeft,
+          targetAnchor: Alignment.bottomRight,
+          followerAnchor: Alignment.topRight,
           offset: const Offset(0, 6),
           child: Material(
             elevation: 8,

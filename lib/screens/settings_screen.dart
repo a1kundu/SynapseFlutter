@@ -162,6 +162,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {}
   }
 
+  void _toggleMcpServer(String name, {required bool enabled}) {
+    final settings = SettingsRepository.instance;
+    settings.toggleMcpServer(name, enabled: enabled);
+    setState(() {
+      _mcpServers = settings.mcpServers;
+    });
+    try {
+      final chatController = context.read<ChatController>();
+      chatController.refreshMcpTools();
+    } catch (_) {}
+  }
+
   void _showAddMcpServerDialog() {
     showDialog(
       context: context,
@@ -418,12 +430,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              trailing: IconButton(
-                                icon: Icon(
-                                  Icons.delete_outlined,
-                                  color: cs.error,
-                                ),
-                                onPressed: () => _removeMcpServer(server.name),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Switch(
+                                    value: server.enabled,
+                                    onChanged: (val) => _toggleMcpServer(
+                                      server.name,
+                                      enabled: val,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.delete_outlined,
+                                      color: cs.error,
+                                    ),
+                                    onPressed: () =>
+                                        _removeMcpServer(server.name),
+                                  ),
+                                ],
                               ),
                             );
                           }),

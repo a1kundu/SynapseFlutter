@@ -7,7 +7,8 @@ import '../models/mcp_models.dart';
 /// Central settings repository (singleton).
 class SettingsRepository extends ChangeNotifier {
   static SettingsRepository? _instance;
-  static SettingsRepository get instance => _instance ??= SettingsRepository._();
+  static SettingsRepository get instance =>
+      _instance ??= SettingsRepository._();
 
   SettingsRepository._();
 
@@ -103,6 +104,13 @@ class SettingsRepository extends ChangeNotifier {
 
   void removeMcpServer(String name) {
     final servers = mcpServers.where((s) => s.name != name).toList();
+    _saveMcpServers(servers);
+  }
+
+  void toggleMcpServer(String name, {required bool enabled}) {
+    final servers = mcpServers
+        .map((s) => s.name == name ? s.copyWith(enabled: enabled) : s)
+        .toList();
     _saveMcpServers(servers);
   }
 

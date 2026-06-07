@@ -6,17 +6,27 @@ class McpServerConfig {
   final String name;
   final String url;
   final McpTransportType type;
+  final bool enabled;
 
   const McpServerConfig({
     required this.name,
     required this.url,
     required this.type,
+    this.enabled = true,
   });
+
+  McpServerConfig copyWith({bool? enabled}) => McpServerConfig(
+    name: name,
+    url: url,
+    type: type,
+    enabled: enabled ?? this.enabled,
+  );
 
   Map<String, dynamic> toJson() => {
     'name': name,
     'url': url,
     'type': type.name,
+    'enabled': enabled,
   };
 
   factory McpServerConfig.fromJson(Map<String, dynamic> json) {
@@ -27,6 +37,7 @@ class McpServerConfig {
         (t) => t.name == json['type'],
         orElse: () => McpTransportType.httpStreamable,
       ),
+      enabled: json['enabled'] is bool ? json['enabled'] as bool : true,
     );
   }
 }
@@ -37,11 +48,7 @@ class McpTool {
   final String? description;
   final Map<String, dynamic>? inputSchema;
 
-  const McpTool({
-    required this.name,
-    this.description,
-    this.inputSchema,
-  });
+  const McpTool({required this.name, this.description, this.inputSchema});
 }
 
 /// Resolved tool with server info (for UI + system prompt).

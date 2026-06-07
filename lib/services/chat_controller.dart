@@ -51,7 +51,9 @@ class ChatController extends ChangeNotifier {
     if (!_hasExplicitToolSelection) {
       return mcpTools.toList();
     }
-    return mcpTools.where((t) => enabledToolNames.contains(t.tool.name)).toList();
+    return mcpTools
+        .where((t) => enabledToolNames.contains(t.tool.name))
+        .toList();
   }
 
   ChatController() {
@@ -154,14 +156,19 @@ class ChatController extends ChangeNotifier {
 
     _saveCurrentSession();
 
-    final forkedMessages = messages.sublist(0, idx + 1).map((m) => ChatMessage(
-          id: ChatMessage.generateId(),
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp,
-          attachments: m.attachments,
-          model: m.model,
-        )).toList();
+    final forkedMessages = messages
+        .sublist(0, idx + 1)
+        .map(
+          (m) => ChatMessage(
+            id: ChatMessage.generateId(),
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            attachments: m.attachments,
+            model: m.model,
+          ),
+        )
+        .toList();
 
     final session = ChatSession(
       id: ChatSession.generateId(),
@@ -179,7 +186,9 @@ class ChatController extends ChangeNotifier {
     messages.addAll(forkedMessages);
     _messageCounter = forkedMessages.isEmpty
         ? 0
-        : forkedMessages.map((m) => m.timestamp).reduce((a, b) => a > b ? a : b);
+        : forkedMessages
+              .map((m) => m.timestamp)
+              .reduce((a, b) => a > b ? a : b);
     _storage.activeSessionId = session.id;
     notifyListeners();
   }
@@ -209,13 +218,24 @@ class ChatController extends ChangeNotifier {
         'createdAt': activeSession?.createdAt.toIso8601String(),
         'exportedAt': DateTime.now().toIso8601String(),
       },
-      'messages': messages.map((m) => {
-            'role': m.role.name,
-            'content': m.content,
-            'model': m.model?.displayName,
-            'attachments':
-                m.attachments.map((a) => {'fileName': a.fileName, 'mimeType': a.mimeType, 'size': a.displaySize}).toList(),
-          }).toList(),
+      'messages': messages
+          .map(
+            (m) => {
+              'role': m.role.name,
+              'content': m.content,
+              'model': m.model?.displayName,
+              'attachments': m.attachments
+                  .map(
+                    (a) => {
+                      'fileName': a.fileName,
+                      'mimeType': a.mimeType,
+                      'size': a.displaySize,
+                    },
+                  )
+                  .toList(),
+            },
+          )
+          .toList(),
     };
   }
 
@@ -287,9 +307,11 @@ class ChatController extends ChangeNotifier {
           ..clear()
           ..addAll(models);
         final lastId = settings.lastSelectedModelId;
-        final restored =
-            lastId.isNotEmpty ? models.where((m) => m.id == lastId).firstOrNull : null;
-        if (selectedModel == null || models.every((m) => m.id != selectedModel?.id)) {
+        final restored = lastId.isNotEmpty
+            ? models.where((m) => m.id == lastId).firstOrNull
+            : null;
+        if (selectedModel == null ||
+            models.every((m) => m.id != selectedModel?.id)) {
           selectedModel = restored ?? models.first;
         }
       }
@@ -326,7 +348,9 @@ class ChatController extends ChangeNotifier {
 
   /// Refresh MCP tools from all configured servers.
   Future<void> refreshMcpTools() async {
-    final servers = SettingsRepository.instance.mcpServers;
+    final servers = SettingsRepository.instance.mcpServers
+        .where((s) => s.enabled)
+        .toList();
     if (servers.isEmpty) {
       mcpTools.clear();
       mcpError = null;
@@ -345,11 +369,13 @@ class ChatController extends ChangeNotifier {
       try {
         final tools = await _mcpClient.discoverTools(server);
         for (final tool in tools) {
-          allTools.add(McpServerTool(
-            serverName: server.name,
-            serverConfig: server,
-            tool: tool,
-          ));
+          allTools.add(
+            McpServerTool(
+              serverName: server.name,
+              serverConfig: server,
+              tool: tool,
+            ),
+          );
         }
       } catch (e) {
         errors.add('${server.name}: $e');
@@ -388,7 +414,9 @@ class ChatController extends ChangeNotifier {
     if (activeSession == null) {
       final session = ChatSession(
         id: ChatSession.generateId(),
-        name: ChatSession.generateName(trimmed.isNotEmpty ? trimmed : 'File conversation'),
+        name: ChatSession.generateName(
+          trimmed.isNotEmpty ? trimmed : 'File conversation',
+        ),
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -452,11 +480,13 @@ class ChatController extends ChangeNotifier {
       try {
         final tools = await _mcpClient.discoverTools(server);
         for (final tool in tools) {
-          allTools.add(McpServerTool(
-            serverName: server.name,
-            serverConfig: server,
-            tool: tool,
-          ));
+          allTools.add(
+            McpServerTool(
+              serverName: server.name,
+              serverConfig: server,
+              tool: tool,
+            ),
+          );
         }
       } catch (e) {
         errors.add('${server.name}: $e');
@@ -475,13 +505,16 @@ class ChatController extends ChangeNotifier {
     final settings = SettingsRepository.instance;
 
     if (!settings.isLlmConfigured) {
-      messages.add(ChatMessage(
-        id: ChatMessage.generateId(),
-        role: MessageRole.assistant,
-        content: 'API key not configured. Go to Settings to set your API key.',
-        timestamp: ++_messageCounter,
-        model: selectedModel,
-      ));
+      messages.add(
+        ChatMessage(
+          id: ChatMessage.generateId(),
+          role: MessageRole.assistant,
+          content:
+              'API key not configured. Go to Settings to set your API key.',
+          timestamp: ++_messageCounter,
+          model: selectedModel,
+        ),
+      );
       notifyListeners();
       return;
     }
@@ -489,14 +522,16 @@ class ChatController extends ChangeNotifier {
     isGenerating = true;
     final currentModel = selectedModel;
     final assistantId = ChatMessage.generateId();
-    messages.add(ChatMessage(
-      id: assistantId,
-      role: MessageRole.assistant,
-      content: '',
-      timestamp: ++_messageCounter,
-      model: currentModel,
-      isStreaming: true,
-    ));
+    messages.add(
+      ChatMessage(
+        id: assistantId,
+        role: MessageRole.assistant,
+        content: '',
+        timestamp: ++_messageCounter,
+        model: currentModel,
+        isStreaming: true,
+      ),
+    );
     notifyListeners();
 
     _doGenerate(assistantId, currentModel);
@@ -505,8 +540,11 @@ class ChatController extends ChangeNotifier {
   Future<void> _doGenerate(String assistantId, LlmModel? currentModel) async {
     try {
       if (currentModel == null) {
-        _updateMessage(assistantId,
-            content: 'No model selected. Fetch models first.', streaming: false);
+        _updateMessage(
+          assistantId,
+          content: 'No model selected. Fetch models first.',
+          streaming: false,
+        );
         isGenerating = false;
         notifyListeners();
         return;
@@ -519,14 +557,16 @@ class ChatController extends ChangeNotifier {
       final modelSupportsTools = currentModel.supportsTools;
       final openAiTools = (hasTools && modelSupportsTools)
           ? tools
-              .map((st) => OpenAiTool(
+                .map(
+                  (st) => OpenAiTool(
                     function: OpenAiFunction(
                       name: st.tool.name,
                       description: st.tool.description ?? '',
                       parameters: st.tool.inputSchema,
                     ),
-                  ))
-              .toList()
+                  ),
+                )
+                .toList()
           : null;
 
       await _streamWithToolCalling(
@@ -568,8 +608,9 @@ class ChatController extends ChangeNotifier {
 
     // Build system prompt
     final systemParts = <String>[];
-    systemParts
-        .add('You are Synapse, a helpful AI assistant.\nCurrent date and time: $dateTime');
+    systemParts.add(
+      'You are Synapse, a helpful AI assistant.\nCurrent date and time: $dateTime',
+    );
 
     // User-defined system prompt
     final userSystemPrompt = settings.systemPrompt;
@@ -578,25 +619,28 @@ class ChatController extends ChangeNotifier {
     }
 
     if (tools.isNotEmpty) {
-      final toolDescriptions = tools.map((st) {
-        final schema =
-            st.tool.inputSchema != null ? jsonEncode(st.tool.inputSchema) : '{}';
-        return '- **${st.tool.name}** (server: ${st.serverName}): '
-            '${st.tool.description ?? "No description"}\n'
-            '  Input schema: $schema';
-      }).join('\n\n');
+      final toolDescriptions = tools
+          .map((st) {
+            final schema = st.tool.inputSchema != null
+                ? jsonEncode(st.tool.inputSchema)
+                : '{}';
+            return '- **${st.tool.name}** (server: ${st.serverName}): '
+                '${st.tool.description ?? "No description"}\n'
+                '  Input schema: $schema';
+          })
+          .join('\n\n');
 
       systemParts.add(
-          'You have access to the following tools via MCP (Model Context Protocol) servers. '
-          'Use them when appropriate to help the user.\n\n'
-          'Available tools:\n$toolDescriptions\n\n'
-          'When you need to use a tool, the system will automatically invoke it for you via function calling.');
+        'You have access to the following tools via MCP (Model Context Protocol) servers. '
+        'Use them when appropriate to help the user.\n\n'
+        'Available tools:\n$toolDescriptions\n\n'
+        'When you need to use a tool, the system will automatically invoke it for you via function calling.',
+      );
     }
 
-    history.add(ChatRequestMessage(
-      role: 'system',
-      content: systemParts.join('\n\n'),
-    ));
+    history.add(
+      ChatRequestMessage(role: 'system', content: systemParts.join('\n\n')),
+    );
 
     // Add messages with file attachment context
     history.addAll(
@@ -625,17 +669,21 @@ class ChatController extends ChangeNotifier {
         try {
           final content = utf8.decode(attachment.bytes!, allowMalformed: true);
           parts.add(
-              '\n\n--- Attached file: ${attachment.fileName} ---\n$content\n--- End of ${attachment.fileName} ---');
+            '\n\n--- Attached file: ${attachment.fileName} ---\n$content\n--- End of ${attachment.fileName} ---',
+          );
         } catch (_) {
           parts.add(
-              '\n[Attached file: ${attachment.fileName} (${attachment.mimeType}, ${attachment.displaySize}) - could not read content]');
+            '\n[Attached file: ${attachment.fileName} (${attachment.mimeType}, ${attachment.displaySize}) - could not read content]',
+          );
         }
       } else if (attachment.bytes != null) {
         parts.add(
-            '\n[Attached file: ${attachment.fileName} (${attachment.mimeType}, ${attachment.displaySize})]');
+          '\n[Attached file: ${attachment.fileName} (${attachment.mimeType}, ${attachment.displaySize})]',
+        );
       } else {
         parts.add(
-            '\n[Previously attached file: ${attachment.fileName} (${attachment.mimeType}, ${attachment.displaySize})]');
+          '\n[Previously attached file: ${attachment.fileName} (${attachment.mimeType}, ${attachment.displaySize})]',
+        );
       }
     }
 
@@ -670,14 +718,24 @@ class ChatController extends ChangeNotifier {
               toolCalls.any((tc) => tc.function.name.isNotEmpty)) {
             toolCallHandled = true;
             await _handleToolCalls(
-                assistantId, model, conversationHistory, toolCalls, mcpToolsList);
+              assistantId,
+              model,
+              conversationHistory,
+              toolCalls,
+              mcpToolsList,
+            );
           } else if (builder.isEmpty) {
-            _updateMessage(assistantId,
-                content: 'No response received from the model. Please try again.');
+            _updateMessage(
+              assistantId,
+              content: 'No response received from the model. Please try again.',
+            );
           }
         case ErrorEvent():
-          _updateMessage(assistantId,
-              content: 'Error: ${event.message}', streaming: false);
+          _updateMessage(
+            assistantId,
+            content: 'Error: ${event.message}',
+            streaming: false,
+          );
       }
     }
   }
@@ -693,14 +751,18 @@ class ChatController extends ChangeNotifier {
         .map((tc) => tc.function.name)
         .where((n) => n.isNotEmpty)
         .toList();
-    _updateMessage(assistantId,
-        content: 'Calling tools: ${toolNames.join(", ")}...', streaming: true);
+    _updateMessage(
+      assistantId,
+      content: 'Calling tools: ${toolNames.join(", ")}...',
+      streaming: true,
+    );
 
     final toolResults = <String>[];
     for (final call in toolCalls) {
       final toolName = call.function.name;
-      final serverTool =
-          tools.where((t) => t.tool.name == toolName).firstOrNull;
+      final serverTool = tools
+          .where((t) => t.tool.name == toolName)
+          .firstOrNull;
 
       String resultContent;
       if (serverTool != null) {
@@ -711,8 +773,11 @@ class ChatController extends ChangeNotifier {
           } catch (_) {
             args = {};
           }
-          resultContent =
-              await _mcpClient.callTool(serverTool.serverConfig, toolName, args);
+          resultContent = await _mcpClient.callTool(
+            serverTool.serverConfig,
+            toolName,
+            args,
+          );
         } catch (e) {
           resultContent = 'Error executing tool: $e';
         }
@@ -723,11 +788,13 @@ class ChatController extends ChangeNotifier {
     }
 
     final extendedHistory = originalHistory.toList();
-    extendedHistory.add(ChatRequestMessage(
-      role: 'user',
-      content:
-          '[Tool Results]\n\n${toolResults.join("\n\n---\n\n")}\n\nPlease use these tool results to answer my original question.',
-    ));
+    extendedHistory.add(
+      ChatRequestMessage(
+        role: 'user',
+        content:
+            '[Tool Results]\n\n${toolResults.join("\n\n---\n\n")}\n\nPlease use these tool results to answer my original question.',
+      ),
+    );
 
     // Stream final response without tools to prevent infinite loop
     await _streamWithToolCalling(assistantId, model, extendedHistory, null, []);
@@ -760,7 +827,7 @@ class ChatController extends ChangeNotifier {
       'Thursday',
       'Friday',
       'Saturday',
-      'Sunday'
+      'Sunday',
     ];
     return days[wd - 1];
   }
@@ -778,7 +845,7 @@ class ChatController extends ChangeNotifier {
       'September',
       'October',
       'November',
-      'December'
+      'December',
     ];
     return months[m - 1];
   }

@@ -240,6 +240,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
+  lua_dardo_plus:
+    dependency: "direct main"
+    description:
+      name: lua_dardo_plus
+      sha256: "91ff0fe79cbb2017a15cf341f4b996a605ccfa0e54897b6c5e70766d59764ba5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.0"
   markdown:
     dependency: "direct main"
     description:
@@ -429,6 +437,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.10.2"
+  sprintf:
+    dependency: transitive
+    description:
+      name: sprintf
+      sha256: "1fc9ffe69d4df602376b52949af107d8f5703b77cda567c4d7d86a0693120f23"
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.0.0"
   stack_trace:
     dependency: transitive
     description:

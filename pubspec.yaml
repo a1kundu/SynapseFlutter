@@ -34,6 +34,9 @@ dependencies:
   intl: ^0.20.2
   webview_flutter: ^4.13.0
 
+  # Lua scripting engine
+  lua_dardo_plus: ^0.3.0
+
   # Updates (Android)
   open_filex: ^4.5.0
   workmanager: ^0.9.0

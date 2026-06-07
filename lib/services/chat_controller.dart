@@ -7,6 +7,7 @@ import '../models/mcp_models.dart';
 import '../settings/settings_repository.dart';
 import 'chat_storage.dart';
 import 'llm_api_client.dart';
+import 'lua_executor.dart';
 import 'mcp_client.dart';
 
 /// Chat controller managing sessions, messages, model selection, MCP tools,
@@ -15,6 +16,7 @@ class ChatController extends ChangeNotifier {
   final LlmApiClient _apiClient = LlmApiClient();
   final McpClient _mcpClient = McpClient();
   final ChatStorage _storage = ChatStorage.instance;
+  final LuaExecutor _luaExecutor = LuaExecutor();
 
   int _messageCounter = 0;
 
@@ -53,6 +55,38 @@ class ChatController extends ChangeNotifier {
         description:
             'Returns the current local date and time in a human-readable format.',
         inputSchema: {'type': 'object', 'properties': {}, 'required': []},
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'run_lua',
+        description:
+            'Execute a Lua 5.3 script in a sandboxed environment. '
+            'Available: base (print, type, tostring, tonumber, pairs, ipairs, '
+            'select, pcall, xpcall, error, assert, rawget, rawset, rawlen, rawequal, '
+            'unpack, setmetatable, getmetatable), math, string, table, coroutine. '
+            'NOT available: os, io, file, require, dofile, loadfile, debug, package. '
+            'Use print() to produce output. The script runs with a 10 second timeout. '
+            'Set persistent=true to keep variables/functions across calls in the same conversation.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'script': {
+              'type': 'string',
+              'description': 'The Lua script to execute.',
+            },
+            'persistent': {
+              'type': 'boolean',
+              'description':
+                  'If true, Lua state persists across calls so variables '
+                  'and functions defined earlier remain available. '
+                  'Defaults to false (fresh VM each call).',
+            },
+          },
+          'required': ['script'],
+        },
       ),
       isSystemTool: true,
     ),
@@ -139,6 +173,7 @@ class ChatController extends ChangeNotifier {
     }
     pendingAttachments.clear();
     inputText = '';
+    _luaExecutor.resetState();
     notifyListeners();
   }
 
@@ -156,6 +191,7 @@ class ChatController extends ChangeNotifier {
     sessions.removeWhere((s) => s.id == sessionId);
 
     if (activeSession?.id == sessionId) {
+      _luaExecutor.resetState();
       if (sessions.isNotEmpty) {
         switchToSession(sessions.first.id);
       } else {
@@ -818,16 +854,17 @@ class ChatController extends ChangeNotifier {
           .firstOrNull;
 
       String resultContent;
+      Map<String, dynamic> args;
+      try {
+        args = jsonDecode(call.function.arguments) as Map<String, dynamic>;
+      } catch (_) {
+        args = {};
+      }
+
       if (serverTool != null && serverTool.isSystemTool) {
-        resultContent = _executeSystemTool(toolName);
+        resultContent = await _executeSystemTool(toolName, args);
       } else if (serverTool != null) {
         try {
-          Map<String, dynamic> args;
-          try {
-            args = jsonDecode(call.function.arguments) as Map<String, dynamic>;
-          } catch (_) {
-            args = {};
-          }
           resultContent = await _mcpClient.callTool(
             serverTool.serverConfig!,
             toolName,
@@ -881,7 +918,10 @@ class ChatController extends ChangeNotifier {
   }
 
   /// Execute a built-in system tool and return its result.
-  String _executeSystemTool(String toolName) {
+  Future<String> _executeSystemTool(
+    String toolName,
+    Map<String, dynamic> args,
+  ) async {
     switch (toolName) {
       case 'current_date_time':
         final now = DateTime.now();
@@ -889,6 +929,17 @@ class ChatController extends ChangeNotifier {
             '${_weekday(now.weekday)}, ${_month(now.month)} ${now.day}, ${now.year} '
             '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
         return dateTime;
+      case 'run_lua':
+        final script = args['script'] as String? ?? '';
+        if (script.trim().isEmpty) {
+          return 'Error: No script provided.';
+        }
+        final persistent = args['persistent'] as bool? ?? false;
+        final result = await _luaExecutor.execute(
+          script,
+          persistent: persistent,
+        );
+        return result.toToolOutput();
       default:
         return "Error: Unknown system tool '$toolName'";
     }
@@ -910,6 +961,7 @@ class ChatController extends ChangeNotifier {
     messages.clear();
     pendingAttachments.clear();
     inputText = '';
+    _luaExecutor.resetState();
     if (activeSession != null) {
       _storage.saveMessages(activeSession!.id, []);
     }

@@ -1335,10 +1335,14 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
           // Code content
           Padding(
             padding: const EdgeInsets.all(12),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: codeContent,
-            ),
+            child: isMermaid
+                // MermaidView uses a WebView that needs bounded width;
+                // its HTML already handles overflow-x internally.
+                ? codeContent
+                : SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: codeContent,
+                  ),
           ),
         ],
       ),

@@ -43,7 +43,6 @@ class _MermaidNativeWebView extends StatefulWidget {
 class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   late final WebViewController _controller;
   double _height = 300;
-  bool _mermaidReady = false;
   bool _pageLoaded = false;
 
   static const _darkBg = Color(0xFF282C34);
@@ -71,7 +70,6 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
       ..addJavaScriptChannel(
         'ReadyChannel',
         onMessageReceived: (msg) {
-          _mermaidReady = true;
           // mermaid.js is parsed and ready — if the page already finished
           // loading and we haven't rendered yet, inject now.
           // (The JS side also handles pending renders, but this is a safety net.)
@@ -135,6 +133,7 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
+      width: double.infinity,
       height: _height,
       child: WebViewWidget(controller: _controller),
     );

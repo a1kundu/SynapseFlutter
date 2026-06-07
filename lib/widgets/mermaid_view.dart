@@ -42,12 +42,10 @@ class _MermaidNativeWebView extends StatefulWidget {
 
 class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   late final WebViewController _controller;
-  double _height = 220;
-  bool _loaded = false;
+  // Start at a generous height so the WebView has room to render Mermaid
+  // at its natural size before HeightChannel reports back.
+  double _height = 400;
 
-  // Background colours matching the code-block container in chat_screen.dart.
-  // An opaque background is required on Android — transparent WebViews are
-  // unreliable and often render as blank.
   static const _darkBg = Color(0xFF282C34);
   static const _lightBg = Color(0xFFF5F5F5);
 
@@ -64,14 +62,9 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
         onMessageReceived: (msg) {
           final h = double.tryParse(msg.message);
           if (h != null && h > 16) {
-            // addPostFrameCallback avoids calling setState before the first
-            // frame is committed, which would trigger _owner != null crash.
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                setState(() {
-                  _height = h + 24;
-                  _loaded = true;
-                });
+                setState(() => _height = h + 24);
               }
             });
           }
@@ -80,8 +73,6 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
-            // Defer until after the current frame so the RenderObject
-            // is guaranteed to be attached before any setState fires.
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _injectDiagram();
             });
@@ -95,8 +86,6 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   void didUpdateWidget(_MermaidNativeWebView old) {
     super.didUpdateWidget(old);
     if (old.isDark != widget.isDark || old.code != widget.code) {
-      setState(() => _loaded = false);
-      // Re-apply background colour if theme changed.
       if (old.isDark != widget.isDark) {
         _controller.setBackgroundColor(_bgColor);
       }
@@ -108,7 +97,6 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
     final bg = widget.isDark ? '#282C34' : '#F5F5F5';
     final theme = widget.isDark ? 'dark' : 'default';
     final encoded = jsonEncode(widget.code);
-    // Set background first so there's no flash of wrong colour.
     _controller.runJavaScript(
       'setBackground("$bg"); renderDiagram($encoded, "$theme");',
     );
@@ -116,25 +104,9 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
 
   @override
   Widget build(BuildContext context) {
-    // Use a plain SizedBox — AnimatedContainer animates through intermediate
-    // heights including zero, which causes WebViewWidget layout errors.
-    // StackFit.loose (default) is used so WebViewWidget gets bounded
-    // constraints even at the initial height.
     return SizedBox(
       height: _height,
-      child: Stack(
-        children: [
-          Positioned.fill(child: WebViewWidget(controller: _controller)),
-          if (!_loaded)
-            const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-        ],
-      ),
+      child: WebViewWidget(controller: _controller),
     );
   }
 }

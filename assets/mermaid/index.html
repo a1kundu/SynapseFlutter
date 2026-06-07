@@ -6,21 +6,19 @@
   <style>
     html, body {
       margin: 0;
-      padding: 8px;
-      /* Background is set at runtime by setBackground() called from Dart
-         before renderDiagram(), so it always matches the chat theme. */
+      padding: 0;
       background: #282C34;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow: hidden;
       box-sizing: border-box;
     }
     #diagram {
-      display: block;
-      min-width: 0;
+      display: inline-block; /* shrink-wrap to SVG intrinsic width */
+      min-width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
     }
     #diagram svg {
-      max-width: 100%;
-      height: auto;
+      display: block;
     }
     #error {
       font-family: monospace;
@@ -28,6 +26,7 @@
       color: #e06c75;
       white-space: pre-wrap;
       word-break: break-all;
+      padding: 8px;
       display: none;
     }
   </style>
@@ -47,15 +46,18 @@
         startOnLoad: false,
         theme: theme,
         securityLevel: 'loose',
-        flowchart: { useMaxWidth: true },
-        sequence: { useMaxWidth: true },
+        // useMaxWidth:false → Mermaid outputs a fixed pixel-width SVG.
+        // This makes rendering independent of the WebView viewport width,
+        // fixing the squashed / tiny diagram on Android.
+        flowchart: { useMaxWidth: false },
+        sequence: { useMaxWidth: false },
+        gantt: { useMaxWidth: false },
       });
 
       const container = document.getElementById('diagram');
       const errorEl = document.getElementById('error');
       errorEl.style.display = 'none';
 
-      // Unique id required by mermaid
       const id = 'mermaid-' + Date.now();
       container.innerHTML = '<div class="mermaid" id="' + id + '">' +
         source.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
@@ -70,17 +72,11 @@
     }
 
     function reportHeight() {
-      // Double RAF to ensure SVG layout is fully committed before measuring.
+      // Double RAF so layout is fully committed before measuring.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          let h = 0;
-          const svg = document.querySelector('#diagram svg');
-          if (svg) {
-            h = Math.ceil(svg.getBoundingClientRect().height);
-          }
-          if (h <= 0) {
-            h = Math.ceil(document.documentElement.scrollHeight);
-          }
+          // scrollHeight is independent of viewport size — reliable on Android.
+          const h = Math.ceil(document.documentElement.scrollHeight);
           if (window.HeightChannel && h > 0) {
             window.HeightChannel.postMessage(String(h));
           }

@@ -3,9 +3,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+// Conditional import: on web the real JS-interop renderer is used;
+// on native platforms the stub is imported (never actually called).
+import '_mermaid_web_renderer.dart'
+    if (dart.library.js_interop) '_mermaid_web_renderer_web.dart';
+
 /// Renders a Mermaid diagram.
-/// - Web platform  → mermaid.ink (already in a browser, no nested WebView)
-/// - Android / iOS → locally via bundled mermaid.min.js (no network needed)
+/// - Web        → dart:js_interop calls bundled mermaid.js → SVG via HtmlElementView
+/// - Android/iOS → WebView loads local index.html with bundled mermaid.js
 class MermaidView extends StatelessWidget {
   final String code;
   final bool isDark;
@@ -15,52 +20,9 @@ class MermaidView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kIsWeb) {
-      return _MermaidInkImage(code: code, isDark: isDark);
+      return MermaidWebRenderer(code: code, isDark: isDark);
     }
     return _MermaidNativeWebView(code: code, isDark: isDark);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Web fallback: mermaid.ink image
-// ---------------------------------------------------------------------------
-
-class _MermaidInkImage extends StatelessWidget {
-  final String code;
-  final bool isDark;
-
-  const _MermaidInkImage({required this.code, required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    final src = isDark ? '%%{init: {"theme":"dark"}}%%\n$code' : code;
-    final url = 'https://mermaid.ink/img/${base64Url.encode(utf8.encode(src))}';
-    final textColor = isDark
-        ? const Color(0xFFABB2BF)
-        : const Color(0xFF383A42);
-
-    return Image.network(
-      url,
-      fit: BoxFit.contain,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return const Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        );
-      },
-      errorBuilder: (context, _, __) => Padding(
-        padding: const EdgeInsets.all(8),
-        child: SelectableText(
-          code,
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 13,
-            color: textColor,
-          ),
-        ),
-      ),
-    );
   }
 }
 

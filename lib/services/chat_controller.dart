@@ -37,6 +37,7 @@ class ChatController extends ChangeNotifier {
 
   final List<ChatAttachment> pendingAttachments = [];
   bool isGenerating = false;
+  bool _cancelled = false;
   String inputText = '';
 
   // ── MCP tools ─────────────────────────────────────────────────────────
@@ -240,6 +241,7 @@ class ChatController extends ChangeNotifier {
   }
 
   void createNewChat() {
+    if (isGenerating) cancelGeneration();
     _saveCurrentSession();
 
     final session = ChatSession(
@@ -262,6 +264,7 @@ class ChatController extends ChangeNotifier {
 
   void switchToSession(String sessionId) {
     if (activeSession?.id == sessionId) return;
+    if (isGenerating) cancelGeneration();
     _saveCurrentSession();
 
     activeSession = sessions.where((s) => s.id == sessionId).firstOrNull;
@@ -697,6 +700,7 @@ class ChatController extends ChangeNotifier {
     }
 
     isGenerating = true;
+    _cancelled = false;
     final currentModel = selectedModel;
     final assistantId = ChatMessage.generateId();
     messages.add(
@@ -776,9 +780,18 @@ class ChatController extends ChangeNotifier {
         messages[idx] = messages[idx].copyWith(isStreaming: false);
       }
       isGenerating = false;
+      _cancelled = false;
       _saveCurrentSession();
       notifyListeners();
     }
+  }
+
+  /// Cancel the ongoing LLM generation.
+  void cancelGeneration() {
+    if (!isGenerating) return;
+    _cancelled = true;
+    _apiClient.abortStream();
+    notifyListeners();
   }
 
   List<ChatRequestMessage> _buildConversationHistory(
@@ -887,6 +900,7 @@ class ChatController extends ChangeNotifier {
     var toolCallHandled = false;
 
     await for (final event in eventStream) {
+      if (_cancelled) break;
       switch (event) {
         case TokenEvent():
           builder.write(event.text);

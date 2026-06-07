@@ -270,6 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     isGenerating: _ctrl.isGenerating,
                     onClearChat: _ctrl.clearConversation,
                     onExportChat: _exportChat,
+                    onCancel: _ctrl.cancelGeneration,
                     hasMessages: _ctrl.messages.isNotEmpty,
                   ),
                 ],
@@ -2024,6 +2025,7 @@ class _ChatInputBar extends StatelessWidget {
   final bool isGenerating;
   final VoidCallback onClearChat;
   final VoidCallback onExportChat;
+  final VoidCallback onCancel;
   final bool hasMessages;
 
   const _ChatInputBar({
@@ -2035,6 +2037,7 @@ class _ChatInputBar extends StatelessWidget {
     required this.isGenerating,
     required this.onClearChat,
     required this.onExportChat,
+    required this.onCancel,
     required this.hasMessages,
   });
 
@@ -2065,13 +2068,12 @@ class _ChatInputBar extends StatelessWidget {
                     onSend();
                   }
                 },
-                enabled: !isGenerating,
                 minLines: 1,
                 maxLines: 5,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   hintText: isGenerating
-                      ? 'Waiting for response...'
+                      ? 'Generating... press stop to cancel'
                       : 'Type a message...',
                   hintStyle: TextStyle(
                     color: cs.onSurfaceVariant.withValues(alpha: 0.6),
@@ -2102,11 +2104,9 @@ class _ChatInputBar extends StatelessWidget {
                     iconSize: 20,
                     icon: Icon(
                       Icons.attach_file,
-                      color: isGenerating
-                          ? cs.onSurfaceVariant.withValues(alpha: 0.4)
-                          : cs.onSurfaceVariant,
+                      color: cs.onSurfaceVariant,
                     ),
-                    onPressed: isGenerating ? null : onAttach,
+                    onPressed: onAttach,
                     tooltip: 'Attach file',
                   ),
                 ),
@@ -2147,32 +2147,46 @@ class _ChatInputBar extends StatelessWidget {
 
                 const Spacer(),
 
-                // Send button
+                // Send or Stop button
                 SizedBox(
                   width: 40,
                   height: 40,
-                  child: FilledButton(
-                    onPressed:
-                        textController.text.trim().isNotEmpty && !isGenerating
-                        ? onSend
-                        : null,
-                    style: FilledButton.styleFrom(
-                      shape: const CircleBorder(),
-                      padding: EdgeInsets.zero,
-                      backgroundColor: cs.primary,
-                      disabledBackgroundColor: cs.onSurface.withValues(
-                        alpha: 0.12,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.send,
-                      size: 18,
-                      color:
-                          textController.text.trim().isNotEmpty && !isGenerating
-                          ? cs.onPrimary
-                          : cs.onSurface.withValues(alpha: 0.38),
-                    ),
-                  ),
+                  child: isGenerating
+                      ? FilledButton(
+                          onPressed: onCancel,
+                          style: FilledButton.styleFrom(
+                            shape: const CircleBorder(),
+                            padding: EdgeInsets.zero,
+                            backgroundColor: cs.error,
+                          ),
+                          child: Icon(
+                            Icons.stop_rounded,
+                            size: 20,
+                            color: cs.onError,
+                          ),
+                        )
+                      : FilledButton(
+                          onPressed:
+                              textController.text.trim().isNotEmpty
+                              ? onSend
+                              : null,
+                          style: FilledButton.styleFrom(
+                            shape: const CircleBorder(),
+                            padding: EdgeInsets.zero,
+                            backgroundColor: cs.primary,
+                            disabledBackgroundColor: cs.onSurface.withValues(
+                              alpha: 0.12,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.send,
+                            size: 18,
+                            color:
+                                textController.text.trim().isNotEmpty
+                                ? cs.onPrimary
+                                : cs.onSurface.withValues(alpha: 0.38),
+                          ),
+                        ),
                 ),
               ],
             ),

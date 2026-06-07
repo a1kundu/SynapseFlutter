@@ -7,6 +7,13 @@ import '../settings/settings_repository.dart';
 
 class LlmApiClient {
   final _client = http.Client();
+  http.Client? _streamClient;
+
+  /// Abort an ongoing stream request by closing its dedicated HTTP client.
+  void abortStream() {
+    _streamClient?.close();
+    _streamClient = null;
+  }
 
   /// Fetch available models from the provider's endpoint.
   Future<List<LlmModel>> fetchModels() async {
@@ -157,7 +164,8 @@ class LlmApiClient {
       request.headers.addAll(headers);
       request.body = jsonEncode(requestBody);
 
-      final streamedResponse = await _client.send(request);
+      _streamClient = http.Client();
+      final streamedResponse = await _streamClient!.send(request);
 
       if (streamedResponse.statusCode != 200) {
         final body = await streamedResponse.stream.bytesToString();
@@ -252,7 +260,12 @@ class LlmApiClient {
         );
       }
     } catch (e) {
-      yield ErrorEvent('Connection error: ${e.toString()}');
+      // When the client is closed mid-stream (cancelled), the error is expected.
+      if (!e.toString().contains('Client is closed')) {
+        yield ErrorEvent('Connection error: ${e.toString()}');
+      }
+    } finally {
+      _streamClient = null;
     }
   }
 

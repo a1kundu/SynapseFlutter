@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -2304,14 +2305,22 @@ class _MermaidCodeBlockState extends State<_MermaidCodeBlock> {
           // Mermaid diagram content
           Padding(
             padding: const EdgeInsets.all(12),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: MermaidView(
-                key: ValueKey('mermaid-${widget.code.hashCode}-$isDark-$_reloadCount'),
-                code: widget.code,
-                isDark: isDark,
-              ),
-            ),
+            // On native, the WebView handles its own scrolling and pinch zoom.
+            // On web, SingleChildScrollView allows wide diagrams to scroll.
+            child: kIsWeb
+                ? SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: MermaidView(
+                      key: ValueKey('mermaid-${widget.code.hashCode}-$isDark-$_reloadCount'),
+                      code: widget.code,
+                      isDark: isDark,
+                    ),
+                  )
+                : MermaidView(
+                    key: ValueKey('mermaid-${widget.code.hashCode}-$isDark-$_reloadCount'),
+                    code: widget.code,
+                    isDark: isDark,
+                  ),
           ),
         ],
       ),

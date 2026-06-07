@@ -406,8 +406,8 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
                     const SizedBox(width: 2),
                     Icon(
                       _overlayEntry != null
-                          ? Icons.expand_more
-                          : Icons.expand_less,
+                          ? Icons.expand_less
+                          : Icons.expand_more,
                       size: 16,
                       color: cs.onSurfaceVariant,
                     ),

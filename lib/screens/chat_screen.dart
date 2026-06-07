@@ -84,12 +84,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (result == null) return;
     for (final file in result.files) {
-      _ctrl.addAttachment(ChatAttachment(
-        fileName: file.name,
-        fileSizeBytes: file.size,
-        mimeType: _guessMimeType(file.name),
-        bytes: file.bytes,
-      ));
+      _ctrl.addAttachment(
+        ChatAttachment(
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          mimeType: _guessMimeType(file.name),
+          bytes: file.bytes,
+        ),
+      );
     }
   }
 
@@ -234,20 +236,39 @@ class _ChatScreenState extends State<ChatScreen> {
             onRemove: _ctrl.removeAttachment,
           ),
 
-        // MCP tools status with selection
-        _McpToolsStatus(controller: _ctrl),
-
-        // Input bar
-        _ChatInputBar(
-          textController: _textController,
-          focusNode: _focusNode,
-          onTextChange: _ctrl.onInputTextChange,
-          onSend: _onSend,
-          onAttach: _onAttach,
-          isGenerating: _ctrl.isGenerating,
-          onClearChat: _ctrl.clearConversation,
-          onExportChat: _exportChat,
-          hasMessages: _ctrl.messages.isNotEmpty,
+        // Lower section: MCP tools status + input bar
+        Builder(
+          builder: (context) {
+            final cs = Theme.of(context).colorScheme;
+            return Container(
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                border: Border(
+                  top: BorderSide(
+                    color: cs.outline.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _McpToolsStatus(controller: _ctrl),
+                  _ChatInputBar(
+                    textController: _textController,
+                    focusNode: _focusNode,
+                    onTextChange: _ctrl.onInputTextChange,
+                    onSend: _onSend,
+                    onAttach: _onAttach,
+                    isGenerating: _ctrl.isGenerating,
+                    onClearChat: _ctrl.clearConversation,
+                    onExportChat: _exportChat,
+                    hasMessages: _ctrl.messages.isNotEmpty,
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );
@@ -295,57 +316,63 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
       itemBuilder: (context) {
         final items = <PopupMenuEntry<dynamic>>[];
 
-        items.add(PopupMenuItem<dynamic>(
-          value: '__refresh__',
-          child: Row(
-            children: [
-              Icon(Icons.refresh, size: 16, color: cs.primary),
-              const SizedBox(width: 8),
-              Text(
-                widget.isLoading ? 'Fetching models...' : 'Refresh models',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: cs.primary,
-                  fontWeight: FontWeight.w500,
+        items.add(
+          PopupMenuItem<dynamic>(
+            value: '__refresh__',
+            child: Row(
+              children: [
+                Icon(Icons.refresh, size: 16, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  widget.isLoading ? 'Fetching models...' : 'Refresh models',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ));
+        );
         items.add(const PopupMenuDivider());
 
         if (widget.isLoading && widget.models.isEmpty) {
-          items.add(PopupMenuItem<dynamic>(
-            enabled: false,
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
+          items.add(
+            PopupMenuItem<dynamic>(
+              enabled: false,
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
             ),
-          ));
+          );
         } else if (widget.error != null && widget.models.isEmpty) {
-          items.add(PopupMenuItem<dynamic>(
-            enabled: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Icon(Icons.error_outline, size: 16, color: cs.error),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      widget.error!,
-                      style: TextStyle(fontSize: 12, color: cs.error),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+          items.add(
+            PopupMenuItem<dynamic>(
+              enabled: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, size: 16, color: cs.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.error!,
+                        style: TextStyle(fontSize: 12, color: cs.error),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ));
+          );
         } else {
           final grouped = <String, List<LlmModel>>{};
           for (final m in widget.models) {
@@ -357,36 +384,40 @@ class _ModelSelectorChipState extends State<ModelSelectorChip> {
             if (!isFirst) items.add(const PopupMenuDivider());
             isFirst = false;
 
-            items.add(PopupMenuItem<dynamic>(
-              enabled: false,
-              height: 32,
-              child: Text(
-                entry.key,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: cs.primary,
+            items.add(
+              PopupMenuItem<dynamic>(
+                enabled: false,
+                height: 32,
+                child: Text(
+                  entry.key,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: cs.primary,
+                  ),
                 ),
               ),
-            ));
+            );
 
             for (final model in entry.value) {
-              items.add(PopupMenuItem<dynamic>(
-                value: model,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        model.displayName,
-                        style: const TextStyle(fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
+              items.add(
+                PopupMenuItem<dynamic>(
+                  value: model,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          model.displayName,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                    if (model.id == widget.selectedModel?.id)
-                      Icon(Icons.check, size: 18, color: cs.primary),
-                  ],
+                      if (model.id == widget.selectedModel?.id)
+                        Icon(Icons.check, size: 18, color: cs.primary),
+                    ],
+                  ),
                 ),
-              ));
+              );
             }
           }
         }
@@ -466,25 +497,25 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               'Start a conversation',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: cs.onSurface,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(color: cs.onSurface),
             ),
             const SizedBox(height: 8),
             Text(
               modelName != null
                   ? 'Using $modelName'
                   : 'Configure your API key in Settings',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 4),
             Text(
               'Type a message below or attach a file to get started',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
           ],
@@ -532,12 +563,13 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final isUser = widget.message.role == MessageRole.user;
     final cs = Theme.of(context).colorScheme;
 
-    final bubbleColor =
-        isUser ? cs.primaryContainer : cs.secondaryContainer;
-    final contentColor =
-        isUser ? cs.onPrimaryContainer : cs.onSecondaryContainer;
-    final alignment =
-        isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final bubbleColor = isUser ? cs.primaryContainer : cs.secondaryContainer;
+    final contentColor = isUser
+        ? cs.onPrimaryContainer
+        : cs.onSecondaryContainer;
+    final alignment = isUser
+        ? CrossAxisAlignment.end
+        : CrossAxisAlignment.start;
 
     return GestureDetector(
       onLongPress: _toggleActions,
@@ -549,8 +581,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
           children: [
             // Role label row
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -565,20 +596,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     const SizedBox(width: 4),
                     Text(
                       widget.message.model?.displayName ?? 'Synapse',
-                      style:
-                          Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: cs.onSurfaceVariant
-                                    .withValues(alpha: 0.7),
-                              ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
                     ),
                   ] else
                     Text(
                       'You',
-                      style:
-                          Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: cs.onSurfaceVariant
-                                    .withValues(alpha: 0.7),
-                              ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
                     ),
                 ],
               ),
@@ -612,8 +639,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   // Attachments
                   if (widget.message.attachments.isNotEmpty) ...[
                     ...widget.message.attachments.map(
-                      (a) =>
-                          _AttachmentChip(attachment: a, tint: contentColor),
+                      (a) => _AttachmentChip(attachment: a, tint: contentColor),
                     ),
                     if (widget.message.content.isNotEmpty)
                       const SizedBox(height: 8),
@@ -624,10 +650,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     if (isUser || widget.message.isStreaming)
                       Text(
                         widget.message.content,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: contentColor),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: contentColor),
                       )
                     else
                       _AssistantMarkdown(
@@ -637,10 +662,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   ] else if (!widget.message.isStreaming)
                     Text(
                       'Empty response',
-                      style:
-                          Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: contentColor.withValues(alpha: 0.5),
-                              ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: contentColor.withValues(alpha: 0.5),
+                      ),
                     ),
 
                   // Streaming indicator
@@ -727,10 +751,7 @@ class _ActionChip extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: cs.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
               ),
             ],
           ),
@@ -758,47 +779,45 @@ class _AssistantMarkdown extends StatelessWidget {
       selectable: false,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
-        p: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: contentColor),
+        p: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: contentColor),
         h1: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: contentColor,
-              fontWeight: FontWeight.bold,
-            ),
+          color: contentColor,
+          fontWeight: FontWeight.bold,
+        ),
         h2: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: contentColor,
-              fontWeight: FontWeight.bold,
-            ),
+          color: contentColor,
+          fontWeight: FontWeight.bold,
+        ),
         h3: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: contentColor,
-              fontWeight: FontWeight.bold,
-            ),
+          color: contentColor,
+          fontWeight: FontWeight.bold,
+        ),
         h4: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: contentColor,
-            ),
+          fontWeight: FontWeight.bold,
+          color: contentColor,
+        ),
         h5: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: contentColor,
-            ),
+          fontWeight: FontWeight.bold,
+          color: contentColor,
+        ),
         h6: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: contentColor,
-            ),
-        listBullet: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: contentColor),
+          fontWeight: FontWeight.bold,
+          color: contentColor,
+        ),
+        listBullet: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: contentColor),
         blockquote: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: contentColor.withValues(alpha: 0.7),
-              fontStyle: FontStyle.italic,
-            ),
+          color: contentColor.withValues(alpha: 0.7),
+          fontStyle: FontStyle.italic,
+        ),
         code: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: cs.primary,
-              fontFamily: 'monospace',
-              backgroundColor: cs.primary.withValues(alpha: 0.08),
-            ),
+          color: cs.primary,
+          fontFamily: 'monospace',
+          backgroundColor: cs.primary.withValues(alpha: 0.08),
+        ),
         codeblockDecoration: BoxDecoration(
           color: isDark ? const Color(0xFF282C34) : const Color(0xFFF5F5F5),
           borderRadius: BorderRadius.circular(8),
@@ -812,8 +831,7 @@ class _AssistantMarkdown extends StatelessWidget {
             ),
           ),
         ),
-        blockquotePadding:
-            const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+        blockquotePadding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
         horizontalRuleDecoration: BoxDecoration(
           border: Border(
             top: BorderSide(color: contentColor.withValues(alpha: 0.2)),
@@ -825,22 +843,19 @@ class _AssistantMarkdown extends StatelessWidget {
           width: 1,
         ),
         tableHead: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: contentColor,
-            ),
-        tableBody: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: contentColor),
+          fontWeight: FontWeight.bold,
+          color: contentColor,
+        ),
+        tableBody: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: contentColor),
         tableCellsPadding: const EdgeInsets.symmetric(
           horizontal: 8,
           vertical: 4,
         ),
         tableHeadAlign: TextAlign.left,
       ),
-      builders: {
-        'code': _CodeBlockBuilder(isDark: isDark),
-      },
+      builders: {'code': _CodeBlockBuilder(isDark: isDark)},
       onTapLink: (text, href, title) {
         if (href != null) {
           launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
@@ -876,9 +891,15 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
     final isMermaid = language.toLowerCase() == 'mermaid';
     final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     final bgColor = isDark ? const Color(0xFF282C34) : const Color(0xFFF5F5F5);
-    final headerColor = isDark ? const Color(0xFF21252B) : const Color(0xFFE8E8E8);
-    final textColor = isDark ? const Color(0xFFABB2BF) : const Color(0xFF383A42);
-    final labelColor = isDark ? const Color(0xFF7F848E) : const Color(0xFF999999);
+    final headerColor = isDark
+        ? const Color(0xFF21252B)
+        : const Color(0xFFE8E8E8);
+    final textColor = isDark
+        ? const Color(0xFFABB2BF)
+        : const Color(0xFF383A42);
+    final labelColor = isDark
+        ? const Color(0xFF7F848E)
+        : const Color(0xFF999999);
 
     Widget codeContent;
     if (isMermaid) {
@@ -901,7 +922,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
                 strokeWidth: 2,
                 value: loadingProgress.expectedTotalBytes != null
                     ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
+                          loadingProgress.expectedTotalBytes!
                     : null,
               ),
             ),
@@ -913,8 +934,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF6B6B).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(4),
@@ -922,8 +942,11 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.warning_amber_rounded,
-                        size: 14, color: labelColor),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 14,
+                      color: labelColor,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Diagram render failed — showing source',
@@ -1012,7 +1035,11 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.copy_outlined, size: 12, color: labelColor),
+                          Icon(
+                            Icons.copy_outlined,
+                            size: 12,
+                            color: labelColor,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Copy',
@@ -1112,18 +1139,18 @@ class _AttachmentChip extends StatelessWidget {
             children: [
               Text(
                 attachment.fileName,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: tint,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: tint),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
                 attachment.displaySize,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontSize: 10,
-                      color: tint.withValues(alpha: 0.6),
-                    ),
+                  fontSize: 10,
+                  color: tint.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -1164,9 +1191,10 @@ class _StreamingIndicatorState extends State<_StreamingIndicator>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.linear),
-    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
   }
 
   @override
@@ -1278,9 +1306,9 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                 const SizedBox(width: 6),
                 Text(
                   'Discovering MCP tools...',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
               ] else if (error != null && toolCount == 0) ...[
                 Icon(Icons.error_outline, size: 14, color: cs.error),
@@ -1288,9 +1316,9 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                 Expanded(
                   child: Text(
                     'MCP error: $error',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: cs.error,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: cs.error),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1313,9 +1341,9 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                     onTap: () => setState(() => _expanded = !_expanded),
                     child: Text(
                       '$activeCount of $toolCount tool${toolCount > 1 ? 's' : ''} enabled',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: cs.primary,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: cs.primary),
                     ),
                   ),
                 ),
@@ -1326,13 +1354,10 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                     padding: EdgeInsets.zero,
                     iconSize: 14,
                     icon: Icon(
-                      _expanded
-                          ? Icons.expand_less
-                          : Icons.expand_more,
+                      _expanded ? Icons.expand_more : Icons.expand_less,
                       color: cs.primary,
                     ),
-                    onPressed: () =>
-                        setState(() => _expanded = !_expanded),
+                    onPressed: () => setState(() => _expanded = !_expanded),
                   ),
                 ),
                 SizedBox(
@@ -1365,18 +1390,17 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                 // Select all / none buttons
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 4),
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   child: Row(
                     children: [
                       Text(
                         'Tool Selection',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelSmall
-                            ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: cs.onSurfaceVariant,
-                            ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                       const Spacer(),
                       TextButton(
@@ -1386,8 +1410,10 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: Text('All',
-                            style: TextStyle(fontSize: 11, color: cs.primary)),
+                        child: Text(
+                          'All',
+                          style: TextStyle(fontSize: 11, color: cs.primary),
+                        ),
                       ),
                       TextButton(
                         onPressed: ctrl.disableAllTools,
@@ -1396,8 +1422,10 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: Text('None',
-                            style: TextStyle(fontSize: 11, color: cs.primary)),
+                        child: Text(
+                          'None',
+                          style: TextStyle(fontSize: 11, color: cs.primary),
+                        ),
                       ),
                     ],
                   ),
@@ -1410,13 +1438,16 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                     itemCount: ctrl.mcpTools.length,
                     itemBuilder: (context, index) {
                       final tool = ctrl.mcpTools[index];
-                      final isEnabled = ctrl.enabledToolNames
-                          .contains(tool.tool.name);
+                      final isEnabled = ctrl.enabledToolNames.contains(
+                        tool.tool.name,
+                      );
                       return InkWell(
                         onTap: () => ctrl.toggleTool(tool.tool.name),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 4),
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
                           child: Row(
                             children: [
                               SizedBox(
@@ -1434,8 +1465,7 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       tool.tool.name,
@@ -1462,8 +1492,9 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
                                 tool.serverName,
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: cs.onSurfaceVariant
-                                      .withValues(alpha: 0.6),
+                                  color: cs.onSurfaceVariant.withValues(
+                                    alpha: 0.6,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1510,78 +1541,58 @@ class _ChatInputBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Container(
-      color: cs.surfaceContainerLow,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Text field with rounded border
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: cs.outline.withValues(alpha: 0.3),
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Text field with rounded border
+            Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: cs.outline.withValues(alpha: 0.3)),
+              ),
+              child: TextField(
+                controller: textController,
+                focusNode: focusNode,
+                onChanged: onTextChange,
+                onSubmitted: (_) {
+                  if (textController.text.trim().isNotEmpty && !isGenerating) {
+                    onSend();
+                  }
+                },
+                enabled: !isGenerating,
+                minLines: 1,
+                maxLines: 5,
+                textInputAction: TextInputAction.newline,
+                decoration: InputDecoration(
+                  hintText: isGenerating
+                      ? 'Waiting for response...'
+                      : 'Type a message...',
+                  hintStyle: TextStyle(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: cs.onSurface),
               ),
             ),
-            child: TextField(
-              controller: textController,
-              focusNode: focusNode,
-              onChanged: onTextChange,
-              onSubmitted: (_) {
-                if (textController.text.trim().isNotEmpty && !isGenerating) {
-                  onSend();
-                }
-              },
-              enabled: !isGenerating,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: isGenerating
-                    ? 'Waiting for response...'
-                    : 'Type a message...',
-                hintStyle: TextStyle(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurface,
-                  ),
-            ),
-          ),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-          // Bottom toolbar
-          Row(
-            children: [
-              // Attach button
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 20,
-                  icon: Icon(
-                    Icons.attach_file,
-                    color: isGenerating
-                        ? cs.onSurfaceVariant.withValues(alpha: 0.4)
-                        : cs.onSurfaceVariant,
-                  ),
-                  onPressed: isGenerating ? null : onAttach,
-                  tooltip: 'Attach file',
-                ),
-              ),
-
-              // Clear chat button
-              if (hasMessages)
+            // Bottom toolbar
+            Row(
+              children: [
+                // Attach button
                 SizedBox(
                   width: 36,
                   height: 36,
@@ -1589,62 +1600,83 @@ class _ChatInputBar extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     iconSize: 20,
                     icon: Icon(
-                      Icons.delete_sweep_outlined,
-                      color: cs.onSurfaceVariant,
+                      Icons.attach_file,
+                      color: isGenerating
+                          ? cs.onSurfaceVariant.withValues(alpha: 0.4)
+                          : cs.onSurfaceVariant,
                     ),
-                    onPressed: onClearChat,
-                    tooltip: 'Clear chat',
+                    onPressed: isGenerating ? null : onAttach,
+                    tooltip: 'Attach file',
                   ),
                 ),
 
-              // Export chat button
-              if (hasMessages)
+                // Clear chat button
+                if (hasMessages)
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 20,
+                      icon: Icon(
+                        Icons.delete_sweep_outlined,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      onPressed: onClearChat,
+                      tooltip: 'Clear chat',
+                    ),
+                  ),
+
+                // Export chat button
+                if (hasMessages)
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 20,
+                      icon: Icon(
+                        Icons.download_outlined,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      onPressed: onExportChat,
+                      tooltip: 'Export chat as JSON',
+                    ),
+                  ),
+
+                const Spacer(),
+
+                // Send button
                 SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 20,
-                    icon: Icon(
-                      Icons.download_outlined,
-                      color: cs.onSurfaceVariant,
-                    ),
-                    onPressed: onExportChat,
-                    tooltip: 'Export chat as JSON',
-                  ),
-                ),
-
-              const Spacer(),
-
-              // Send button
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: FilledButton(
-                  onPressed:
-                      textController.text.trim().isNotEmpty && !isGenerating
-                          ? onSend
-                          : null,
-                  style: FilledButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: EdgeInsets.zero,
-                    backgroundColor: cs.primary,
-                    disabledBackgroundColor:
-                        cs.onSurface.withValues(alpha: 0.12),
-                  ),
-                  child: Icon(
-                    Icons.send,
-                    size: 18,
-                    color:
+                  width: 40,
+                  height: 40,
+                  child: FilledButton(
+                    onPressed:
                         textController.text.trim().isNotEmpty && !isGenerating
-                            ? cs.onPrimary
-                            : cs.onSurface.withValues(alpha: 0.38),
+                        ? onSend
+                        : null,
+                    style: FilledButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: EdgeInsets.zero,
+                      backgroundColor: cs.primary,
+                      disabledBackgroundColor: cs.onSurface.withValues(
+                        alpha: 0.12,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.send,
+                      size: 18,
+                      color:
+                          textController.text.trim().isNotEmpty && !isGenerating
+                          ? cs.onPrimary
+                          : cs.onSurface.withValues(alpha: 0.38),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

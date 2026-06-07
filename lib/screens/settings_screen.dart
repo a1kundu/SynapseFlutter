@@ -47,8 +47,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _llmProvider = settings.llmProvider;
     _apiKeyController = TextEditingController(text: settings.llmApiKey);
     _serverUrlController = TextEditingController(text: settings.llmServerUrl);
-    _systemPromptController =
-        TextEditingController(text: settings.systemPrompt);
+    _systemPromptController = TextEditingController(
+      text: settings.systemPrompt,
+    );
     _mcpServers = settings.mcpServers;
   }
 
@@ -91,8 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       showUpdateDialog(context, update);
     } else {
       showRootSnackBar(
-        const SnackBar(
-            content: Text('You\'re already on the latest version.')),
+        const SnackBar(content: Text('You\'re already on the latest version.')),
       );
     }
   }
@@ -207,9 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 12),
                         Text(
                           'Synapse',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
+                          style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
@@ -217,9 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           appVersion == 'APP_VERSION_PLACEHOLDER'
                               ? 'dev (${UpdateService.channel})'
                               : 'v$appVersion (${UpdateService.channel})',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                         const SizedBox(height: 2),
@@ -237,9 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(
                             'Base prompt (always included):',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
+                            style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(color: cs.onSurface),
                           ),
                           const SizedBox(height: 8),
@@ -247,16 +241,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest
-                                  .withValues(alpha: 0.5),
+                              color: cs.surfaceContainerHighest.withValues(
+                                alpha: 0.5,
+                              ),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               'You are Synapse, a helpful AI assistant.\n'
                               'Current date and time: [auto-populated]',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: cs.onSurfaceVariant,
                                     fontFamily: 'monospace',
@@ -266,9 +259,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 16),
                           Text(
                             'Custom instructions (appended to base prompt):',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
+                            style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(color: cs.onSurface),
                           ),
                           const SizedBox(height: 8),
@@ -391,9 +382,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(
                             'API Key',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
+                            style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(color: cs.onSurface),
                           ),
                           const SizedBox(height: 8),
@@ -413,8 +402,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       : Icons.visibility_outlined,
                                 ),
                                 onPressed: () {
-                                  setState(
-                                      () => _showApiKey = !_showApiKey);
+                                  setState(() => _showApiKey = !_showApiKey);
                                 },
                               ),
                             ),
@@ -422,17 +410,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 16),
                           Text(
                             'Server URL',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
+                            style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(color: cs.onSurface),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Leave empty to use default: ${_llmProvider.defaultBaseUrl}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: cs.onSurfaceVariant),
                           ),
                           const SizedBox(height: 8),
@@ -490,8 +474,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   Icons.delete_outlined,
                                   color: cs.error,
                                 ),
-                                onPressed: () =>
-                                    _removeMcpServer(server.name),
+                                onPressed: () => _removeMcpServer(server.name),
                               ),
                             );
                           }),
@@ -542,8 +525,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               colorScheme: cs,
                             ),
                             title: const Text('Check for updates'),
-                            subtitle:
-                                Text('Channel: ${UpdateService.channel}'),
+                            subtitle: Text('Channel: ${UpdateService.channel}'),
                             trailing: Icon(
                               Icons.chevron_right,
                               color: cs.onSurfaceVariant,
@@ -562,8 +544,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       children: [
                         ListTile(
-                          leading:
-                              IconBox(icon: Icons.source, colorScheme: cs),
+                          leading: IconBox(icon: Icons.source, colorScheme: cs),
                           title: const Text('Source Code'),
                           subtitle: Text(
                             '${UpdateService.owner}/${UpdateService.repo}',
@@ -589,8 +570,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse(
-                                '${UpdateService.repoUrl}/issues'),
+                            Uri.parse('${UpdateService.repoUrl}/issues'),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),
@@ -600,15 +580,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             colorScheme: cs,
                           ),
                           title: const Text('Releases'),
-                          subtitle:
-                              const Text('Download latest versions'),
+                          subtitle: const Text('Download latest versions'),
                           trailing: Icon(
                             Icons.open_in_new,
                             color: cs.onSurfaceVariant,
                           ),
                           onTap: () => launchUrl(
-                            Uri.parse(
-                                '${UpdateService.repoUrl}/releases'),
+                            Uri.parse('${UpdateService.repoUrl}/releases'),
                             mode: LaunchMode.externalApplication,
                           ),
                         ),
@@ -661,8 +639,7 @@ class _ThemeTile extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color:
-              selected ? cs.primaryContainer : cs.surfaceContainerHighest,
+          color: selected ? cs.primaryContainer : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
@@ -728,16 +705,14 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
       if (url.isEmpty) {
         _urlError = 'URL is required';
         valid = false;
-      } else if (!url.startsWith('http://') &&
-          !url.startsWith('https://')) {
+      } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
         _urlError = 'Must start with http:// or https://';
         valid = false;
       }
     });
 
     if (valid) {
-      widget.onAdd(
-          McpServerConfig(name: name, url: url, type: _transportType));
+      widget.onAdd(McpServerConfig(name: name, url: url, type: _transportType));
     }
   }
 
@@ -789,23 +764,42 @@ class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
               style: Theme.of(context).textTheme.labelLarge,
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: McpTransportType.values.map((type) {
-                final isSelected = _transportType == type;
-                return FilterChip(
-                  selected: isSelected,
-                  label: Text(
-                    type == McpTransportType.httpStreamable
-                        ? 'HTTP Streamable'
-                        : 'SSE',
-                  ),
-                  onSelected: (_) {
-                    setState(() => _transportType = type);
-                  },
-                  showCheckmark: true,
+            Builder(
+              builder: (context) {
+                final cs = Theme.of(context).colorScheme;
+                return Wrap(
+                  spacing: 8,
+                  children: McpTransportType.values.map((type) {
+                    final isSelected = _transportType == type;
+                    return FilterChip(
+                      selected: isSelected,
+                      label: Text(
+                        type == McpTransportType.httpStreamable
+                            ? 'HTTP Streamable'
+                            : 'SSE',
+                      ),
+                      onSelected: (_) {
+                        setState(() => _transportType = type);
+                      },
+                      showCheckmark: true,
+                      selectedColor: cs.primaryContainer,
+                      checkmarkColor: cs.onPrimaryContainer,
+                      labelStyle: TextStyle(
+                        color: isSelected
+                            ? cs.onPrimaryContainer
+                            : cs.onSurface,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                      side: BorderSide(
+                        color: isSelected ? cs.primary : cs.outline,
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                    );
+                  }).toList(),
                 );
-              }).toList(),
+              },
             ),
           ],
         ),

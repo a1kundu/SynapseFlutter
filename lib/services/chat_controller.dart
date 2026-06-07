@@ -480,8 +480,10 @@ class ChatController extends ChangeNotifier {
     // Save after adding user message
     _saveCurrentSession();
 
-    // Check if MCP servers changed
-    final servers = SettingsRepository.instance.mcpServers;
+    // Check if MCP servers changed (only consider enabled servers)
+    final servers = SettingsRepository.instance.mcpServers
+        .where((s) => s.enabled)
+        .toList();
     final distinctServers = mcpTools.map((t) => t.serverName).toSet();
     if (servers.length != distinctServers.length ||
         servers.any((s) => !distinctServers.contains(s.name))) {
@@ -498,7 +500,9 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> _refreshMcpToolsSync() async {
-    final servers = SettingsRepository.instance.mcpServers;
+    final servers = SettingsRepository.instance.mcpServers
+        .where((s) => s.enabled)
+        .toList();
     if (servers.isEmpty) {
       mcpTools.clear();
       mcpError = null;

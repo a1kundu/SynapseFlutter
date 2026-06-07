@@ -915,8 +915,19 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     ...widget.message.attachments.map(
                       (a) => _AttachmentChip(attachment: a, tint: contentColor),
                     ),
-                    if (widget.message.content.isNotEmpty)
+                    if (widget.message.content.isNotEmpty ||
+                        widget.message.toolCalls.isNotEmpty)
                       const SizedBox(height: 8),
+                  ],
+
+                  // Tool call steps (shown before final content)
+                  if (widget.message.toolCalls.isNotEmpty) ...[
+                    _ToolCallSteps(
+                      toolCalls: widget.message.toolCalls,
+                      contentColor: contentColor,
+                    ),
+                    if (widget.message.content.isNotEmpty)
+                      const SizedBox(height: 10),
                   ],
 
                   // Text content
@@ -933,7 +944,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         content: widget.message.content,
                         contentColor: contentColor,
                       ),
-                  ] else if (!widget.message.isStreaming)
+                  ] else if (!widget.message.isStreaming &&
+                      widget.message.toolCalls.isEmpty)
                     Text(
                       'Empty response',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -1448,6 +1460,180 @@ class _AttachmentChip extends StatelessWidget {
     if (mimeType == 'application/json') return Icons.data_object_outlined;
     if (mimeType == 'application/pdf') return Icons.picture_as_pdf_outlined;
     return Icons.insert_drive_file_outlined;
+  }
+}
+
+// ── Tool Call Steps ─────────────────────────────────────────────────────────
+
+class _ToolCallSteps extends StatelessWidget {
+  final List<ToolCallEntry> toolCalls;
+  final Color contentColor;
+
+  const _ToolCallSteps({required this.toolCalls, required this.contentColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: toolCalls.map((entry) {
+        final IconData icon;
+        final Color iconColor;
+        switch (entry.status) {
+          case ToolCallStatus.running:
+            icon = Icons.hourglass_top_rounded;
+            iconColor = cs.tertiary;
+          case ToolCallStatus.completed:
+            icon = Icons.check_circle_outline_rounded;
+            iconColor = Colors.green;
+          case ToolCallStatus.error:
+            icon = Icons.error_outline_rounded;
+            iconColor = cs.error;
+        }
+        return _ToolCallTile(
+          entry: entry,
+          icon: icon,
+          iconColor: iconColor,
+          contentColor: contentColor,
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ToolCallTile extends StatefulWidget {
+  final ToolCallEntry entry;
+  final IconData icon;
+  final Color iconColor;
+  final Color contentColor;
+
+  const _ToolCallTile({
+    required this.entry,
+    required this.icon,
+    required this.iconColor,
+    required this.contentColor,
+  });
+
+  @override
+  State<_ToolCallTile> createState() => _ToolCallTileState();
+}
+
+class _ToolCallTileState extends State<_ToolCallTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasResult = widget.entry.result.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row (tap to expand)
+          InkWell(
+            onTap: hasResult ? () => setState(() => _expanded = !_expanded) : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: widget.contentColor.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(widget.icon, size: 16, color: widget.iconColor),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      widget.entry.toolName,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: widget.contentColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (hasResult) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 16,
+                      color: widget.contentColor.withValues(alpha: 0.5),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Expanded details (arguments + result)
+          if (_expanded) ...[
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.entry.arguments.isNotEmpty &&
+                      widget.entry.arguments != '{}') ...[
+                    Text(
+                      'Arguments:',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: widget.contentColor.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.entry.arguments,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: widget.contentColor.withValues(alpha: 0.8),
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                      ),
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  Text(
+                    'Result:',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: widget.contentColor.withValues(alpha: 0.6),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.entry.result,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: widget.contentColor.withValues(alpha: 0.8),
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                    ),
+                    maxLines: 10,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

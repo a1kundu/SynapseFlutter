@@ -785,19 +785,30 @@ class ChatController extends ChangeNotifier {
     List<ToolCallInfo> toolCalls,
     List<McpServerTool> tools,
   ) async {
-    final toolNames = toolCalls
-        .map((tc) => tc.function.name)
-        .where((n) => n.isNotEmpty)
+    // Create ToolCallEntry list for UI display
+    final toolCallEntries = toolCalls
+        .where((tc) => tc.function.name.isNotEmpty)
+        .map((tc) => ToolCallEntry(
+              id: tc.id,
+              toolName: tc.function.name,
+              arguments: tc.function.arguments,
+              status: ToolCallStatus.running,
+            ))
         .toList();
+
+    // Update the assistant message with tool call entries (visible in UI)
     _updateMessage(
       assistantId,
-      content: 'Calling tools: ${toolNames.join(", ")}...',
-      streaming: true,
+      content: '',
+      toolCalls: toolCallEntries,
     );
 
-    final toolResults = <String>[];
-    for (final call in toolCalls) {
+    // Execute each tool call and update entries progressively
+    for (int i = 0; i < toolCalls.length; i++) {
+      final call = toolCalls[i];
       final toolName = call.function.name;
+      if (toolName.isEmpty) continue;
+
       final serverTool = tools
           .where((t) => t.tool.name == toolName)
           .firstOrNull;
@@ -824,17 +835,42 @@ class ChatController extends ChangeNotifier {
       } else {
         resultContent = "Error: Tool '$toolName' not found";
       }
-      toolResults.add('Tool `$toolName` returned:\n$resultContent');
+
+      // Update the entry with result
+      final entryIdx = toolCallEntries.indexWhere((e) => e.id == call.id);
+      if (entryIdx >= 0) {
+        toolCallEntries[entryIdx].result = resultContent;
+        toolCallEntries[entryIdx].status = resultContent.startsWith('Error')
+            ? ToolCallStatus.error
+            : ToolCallStatus.completed;
+        _updateMessage(assistantId, toolCalls: List.from(toolCallEntries));
+      }
     }
 
+    // Build proper OpenAI-compatible conversation history:
+    // 1. Original history
+    // 2. Assistant message with tool_calls (role: assistant)
+    // 3. Tool result messages (role: tool, one per tool call)
     final extendedHistory = originalHistory.toList();
+
+    // Add assistant message that contains the tool_calls
     extendedHistory.add(
       ChatRequestMessage(
-        role: 'user',
-        content:
-            '[Tool Results]\n\n${toolResults.join("\n\n---\n\n")}\n\nPlease use these tool results to answer my original question.',
+        role: 'assistant',
+        toolCalls: toolCalls.where((tc) => tc.function.name.isNotEmpty).toList(),
       ),
     );
+
+    // Add tool result messages (role: tool with tool_call_id)
+    for (final entry in toolCallEntries) {
+      extendedHistory.add(
+        ChatRequestMessage(
+          role: 'tool',
+          content: entry.result,
+          toolCallId: entry.id,
+        ),
+      );
+    }
 
     // Stream final response without tools to prevent infinite loop
     await _streamWithToolCalling(assistantId, model, extendedHistory, null, []);
@@ -854,11 +890,14 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  void _updateMessage(String id, {String? content, bool? streaming}) {
+  void _updateMessage(String id, {String? content, bool? streaming, List<ToolCallEntry>? toolCalls}) {
     final idx = messages.indexWhere((m) => m.id == id);
     if (idx >= 0) {
       if (content != null) messages[idx].content = content;
       if (streaming != null) messages[idx].isStreaming = streaming;
+      if (toolCalls != null) {
+        messages[idx] = messages[idx].copyWith(toolCalls: toolCalls);
+      }
       notifyListeners();
     }
   }

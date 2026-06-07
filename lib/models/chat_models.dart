@@ -77,6 +77,45 @@ class ChatAttachment {
 /// Sender role for a chat message.
 enum MessageRole { user, assistant }
 
+/// Status of a tool call execution.
+enum ToolCallStatus { running, completed, error }
+
+/// Represents a single tool call with its arguments and result.
+class ToolCallEntry {
+  final String id;
+  final String toolName;
+  final String arguments;
+  String result;
+  ToolCallStatus status;
+
+  ToolCallEntry({
+    required this.id,
+    required this.toolName,
+    required this.arguments,
+    this.result = '',
+    this.status = ToolCallStatus.running,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'toolName': toolName,
+        'arguments': arguments,
+        'result': result,
+        'status': status.name,
+      };
+
+  factory ToolCallEntry.fromJson(Map<String, dynamic> json) => ToolCallEntry(
+        id: json['id'] as String? ?? '',
+        toolName: json['toolName'] as String? ?? '',
+        arguments: json['arguments'] as String? ?? '',
+        result: json['result'] as String? ?? '',
+        status: ToolCallStatus.values.firstWhere(
+          (s) => s.name == json['status'],
+          orElse: () => ToolCallStatus.completed,
+        ),
+      );
+}
+
 /// A single chat message.
 class ChatMessage {
   final String id;
@@ -86,6 +125,7 @@ class ChatMessage {
   final List<ChatAttachment> attachments;
   final LlmModel? model;
   bool isStreaming;
+  final List<ToolCallEntry> toolCalls;
 
   ChatMessage({
     required this.id,
@@ -95,11 +135,13 @@ class ChatMessage {
     this.attachments = const [],
     this.model,
     this.isStreaming = false,
+    this.toolCalls = const [],
   });
 
   ChatMessage copyWith({
     String? content,
     bool? isStreaming,
+    List<ToolCallEntry>? toolCalls,
   }) {
     return ChatMessage(
       id: id,
@@ -109,6 +151,7 @@ class ChatMessage {
       attachments: attachments,
       model: model,
       isStreaming: isStreaming ?? this.isStreaming,
+      toolCalls: toolCalls ?? this.toolCalls,
     );
   }
 
@@ -119,6 +162,8 @@ class ChatMessage {
         'timestamp': timestamp,
         'attachments': attachments.map((a) => a.toJson()).toList(),
         if (model != null) 'model': model!.toJson(),
+        if (toolCalls.isNotEmpty)
+          'toolCalls': toolCalls.map((t) => t.toJson()).toList(),
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -137,6 +182,11 @@ class ChatMessage {
         model: json['model'] != null
             ? LlmModel.fromJson(json['model'] as Map<String, dynamic>)
             : null,
+        toolCalls: (json['toolCalls'] as List?)
+                ?.map(
+                    (t) => ToolCallEntry.fromJson(t as Map<String, dynamic>))
+                .toList() ??
+            [],
       );
 
   static String generateId() {

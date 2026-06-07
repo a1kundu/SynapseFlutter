@@ -711,6 +711,30 @@ class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
                                                       TextOverflow.ellipsis,
                                                 ),
                                               ),
+                                              if (model.supportsTools)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(right: 6),
+                                                  child: Tooltip(
+                                                    message: 'Supports tool calling',
+                                                    child: Icon(
+                                                      Icons.build_circle_outlined,
+                                                      size: 14,
+                                                      color: cs.primary.withValues(alpha: 0.7),
+                                                    ),
+                                                  ),
+                                                )
+                                              else
+                                                Padding(
+                                                  padding: const EdgeInsets.only(right: 6),
+                                                  child: Tooltip(
+                                                    message: 'No tool calling support',
+                                                    child: Icon(
+                                                      Icons.build_circle_outlined,
+                                                      size: 14,
+                                                      color: cs.onSurfaceVariant.withValues(alpha: 0.25),
+                                                    ),
+                                                  ),
+                                                ),
                                               if (model.id ==
                                                   widget.selectedModel?.id)
                                                 Icon(

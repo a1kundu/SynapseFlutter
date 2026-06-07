@@ -7,7 +7,9 @@
     html, body {
       margin: 0;
       padding: 8px;
-      background: transparent;
+      /* Background is set at runtime by setBackground() called from Dart
+         before renderDiagram(), so it always matches the chat theme. */
+      background: #282C34;
       overflow-x: auto;
       overflow-y: hidden;
       box-sizing: border-box;
@@ -35,6 +37,11 @@
   <div id="diagram"></div>
   <pre id="error"></pre>
   <script>
+    function setBackground(color) {
+      document.documentElement.style.background = color;
+      document.body.style.background = color;
+    }
+
     function renderDiagram(source, theme) {
       mermaid.initialize({
         startOnLoad: false,

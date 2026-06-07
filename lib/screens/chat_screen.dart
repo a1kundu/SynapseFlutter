@@ -1239,14 +1239,9 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
 
     Widget codeContent;
     if (isMermaid) {
-      // Render Mermaid locally using bundled mermaid.min.js via WebView.
-      // The widget self-reports its rendered height so it sizes correctly
-      // inside the chat list. Theme changes are passed directly to the widget.
-      codeContent = MermaidView(
-        key: ValueKey('mermaid-${text.hashCode}-$isDark'),
-        code: text,
-        isDark: isDark,
-      );
+      // Mermaid gets its own StatefulWidget so the reload button in the header
+      // can trigger a full re-render of the diagram.
+      return _MermaidCodeBlock(code: text, isDark: isDark);
     } else {
       try {
         final result = highlight.parse(text, language: language);
@@ -1284,11 +1279,8 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
             ),
             child: Row(
               children: [
-                if (isMermaid)
-                  Icon(Icons.schema_outlined, size: 14, color: labelColor),
-                if (isMermaid) const SizedBox(width: 4),
                 Text(
-                  isMermaid ? 'Mermaid Diagram' : language,
+                  language,
                   style: TextStyle(
                     fontSize: 11,
                     fontFamily: 'monospace',
@@ -2185,6 +2177,143 @@ class _ChatInputBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mermaid code block with reload button in the header
+// ---------------------------------------------------------------------------
+
+class _MermaidCodeBlock extends StatefulWidget {
+  final String code;
+  final bool isDark;
+
+  const _MermaidCodeBlock({required this.code, required this.isDark});
+
+  @override
+  State<_MermaidCodeBlock> createState() => _MermaidCodeBlockState();
+}
+
+class _MermaidCodeBlockState extends State<_MermaidCodeBlock> {
+  int _reloadCount = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final bgColor = isDark ? const Color(0xFF282C34) : const Color(0xFFF5F5F5);
+    final headerColor = isDark
+        ? const Color(0xFF21252B)
+        : const Color(0xFFE8E8E8);
+    final labelColor = isDark
+        ? const Color(0xFF7F848E)
+        : const Color(0xFF999999);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with label, reload, and copy buttons
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: headerColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.schema_outlined, size: 14, color: labelColor),
+                const SizedBox(width: 4),
+                Text(
+                  'Mermaid Diagram',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: labelColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                // Reload button
+                InkWell(
+                  onTap: () => setState(() => _reloadCount++),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.refresh_rounded,
+                          size: 12,
+                          color: labelColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Reload',
+                          style: TextStyle(fontSize: 11, color: labelColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Copy button
+                InkWell(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: widget.code));
+                    showRootSnackBar(
+                      const SnackBar(
+                        content: Text('Code copied to clipboard'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.copy_outlined,
+                          size: 12,
+                          color: labelColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Copy',
+                          style: TextStyle(fontSize: 11, color: labelColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Mermaid diagram content
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: MermaidView(
+                key: ValueKey('mermaid-${widget.code.hashCode}-$isDark-$_reloadCount'),
+                code: widget.code,
+                isDark: isDark,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

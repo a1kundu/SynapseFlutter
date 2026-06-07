@@ -44,7 +44,6 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
   late final WebViewController _controller;
   double _height = 300;
   bool _pageLoaded = false;
-  bool _rendered = false;
 
   static const _darkBg = Color(0xFF282C34);
   static const _lightBg = Color(0xFFF5F5F5);
@@ -65,10 +64,7 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
           if (h != null && h > 16) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                setState(() {
-                  _height = h + 16;
-                  _rendered = true;
-                });
+                setState(() => _height = h + 16);
               }
             });
           }
@@ -129,11 +125,6 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
     );
   }
 
-  void _reload() {
-    setState(() => _rendered = false);
-    _controller.loadFlutterAsset('assets/mermaid/index.html');
-  }
-
   @override
   void dispose() {
     // WebViewController doesn't have a dispose() method in webview_flutter 4.x,
@@ -148,43 +139,10 @@ class _MermaidNativeWebViewState extends State<_MermaidNativeWebView> {
     // inside a horizontal SingleChildScrollView (which gives unbounded width).
     // The HTML has useMaxWidth: true so the diagram fits within this width.
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final iconColor = widget.isDark
-        ? const Color(0xFF7F848E)
-        : const Color(0xFF999999);
-
     return SizedBox(
       width: screenWidth,
       height: _height,
-      child: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          // Show reload button if diagram hasn't rendered yet
-          if (!_rendered)
-            Positioned(
-              top: 4,
-              right: 4,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _reload,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: _bgColor.withValues(alpha: 0.8),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.refresh_rounded,
-                      size: 16,
-                      color: iconColor,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      child: WebViewWidget(controller: _controller),
     );
   }
 }

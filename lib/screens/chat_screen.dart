@@ -1575,43 +1575,17 @@ class _ToolCallTileState extends State<_ToolCallTile> {
                 children: [
                   if (widget.entry.arguments.isNotEmpty &&
                       widget.entry.arguments != '{}') ...[
-                    Text(
-                      'Arguments:',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: widget.contentColor.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.entry.arguments,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: widget.contentColor.withValues(alpha: 0.8),
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                      ),
-                      maxLines: 5,
-                      overflow: TextOverflow.ellipsis,
+                    _CopyableSection(
+                      label: 'Arguments',
+                      content: widget.entry.arguments,
+                      contentColor: widget.contentColor,
                     ),
                     const SizedBox(height: 6),
                   ],
-                  Text(
-                    'Result:',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: widget.contentColor.withValues(alpha: 0.6),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.entry.result,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: widget.contentColor.withValues(alpha: 0.8),
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                    ),
-                    maxLines: 10,
-                    overflow: TextOverflow.ellipsis,
+                  _CopyableSection(
+                    label: 'Result',
+                    content: widget.entry.result,
+                    contentColor: widget.contentColor,
                   ),
                 ],
               ),
@@ -1619,6 +1593,73 @@ class _ToolCallTileState extends State<_ToolCallTile> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A labeled section with monospace content and a copy button.
+class _CopyableSection extends StatelessWidget {
+  final String label;
+  final String content;
+  final Color contentColor;
+
+  const _CopyableSection({
+    required this.label,
+    required this.content,
+    required this.contentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$label:',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: contentColor.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 20,
+              width: 20,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 13,
+                icon: Icon(
+                  Icons.copy_rounded,
+                  color: contentColor.withValues(alpha: 0.45),
+                ),
+                tooltip: 'Copy $label',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('$label copied'),
+                      duration: const Duration(seconds: 1),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        SelectableText(
+          content,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: contentColor.withValues(alpha: 0.8),
+            fontFamily: 'monospace',
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 }

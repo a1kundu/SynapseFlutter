@@ -9,6 +9,7 @@ import 'chat_storage.dart';
 import 'llm_api_client.dart';
 import 'lua_executor.dart';
 import 'mcp_client.dart';
+import 'notification_service.dart';
 
 /// Chat controller managing sessions, messages, model selection, MCP tools,
 /// tool selection, and streaming.
@@ -86,6 +87,76 @@ class ChatController extends ChangeNotifier {
             },
           },
           'required': ['script'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'notify_user',
+        description:
+            'Send a system notification to the user\'s device. '
+            'Use this to alert, remind, or inform the user with a notification '
+            'that appears in the system notification shade even if the app is in background. '
+            'Supports vibration, sound, silent mode, priority levels, and expandable text.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'title': {
+              'type': 'string',
+              'description': 'The notification title (required).',
+            },
+            'body': {
+              'type': 'string',
+              'description': 'Short notification body text.',
+            },
+            'big_text': {
+              'type': 'string',
+              'description':
+                  'Expandable long text shown when the notification is expanded. '
+                  'Use for detailed content that doesn\'t fit in the body.',
+            },
+            'sub_text': {
+              'type': 'string',
+              'description': 'Small text shown below the notification content.',
+            },
+            'ticker': {
+              'type': 'string',
+              'description':
+                  'Ticker text announced by accessibility services when the notification arrives.',
+            },
+            'vibrate': {
+              'type': 'boolean',
+              'description':
+                  'Enable vibration when the notification is delivered. Defaults to true.',
+            },
+            'play_sound': {
+              'type': 'boolean',
+              'description':
+                  'Play the default notification sound. Defaults to true.',
+            },
+            'silent': {
+              'type': 'boolean',
+              'description':
+                  'If true, the notification is delivered silently — no sound, '
+                  'no vibration, no heads-up popup. Defaults to false.',
+            },
+            'priority': {
+              'type': 'string',
+              'enum': ['min', 'low', 'default', 'high', 'max'],
+              'description':
+                  'Notification priority. "high"/"max" may show as heads-up. '
+                  'Defaults to "default".',
+            },
+            'timeout_after_ms': {
+              'type': 'integer',
+              'description':
+                  'Auto-dismiss the notification after this many milliseconds. '
+                  'If not set, the notification persists until the user dismisses it.',
+            },
+          },
+          'required': ['title'],
         },
       ),
       isSystemTool: true,
@@ -940,6 +1011,23 @@ class ChatController extends ChangeNotifier {
           persistent: persistent,
         );
         return result.toToolOutput();
+      case 'notify_user':
+        final title = args['title'] as String? ?? '';
+        if (title.trim().isEmpty) {
+          return 'Error: Notification title is required.';
+        }
+        return await NotificationService.instance.notify(
+          title: title,
+          body: args['body'] as String?,
+          bigText: args['big_text'] as String?,
+          subText: args['sub_text'] as String?,
+          ticker: args['ticker'] as String?,
+          vibrate: args['vibrate'] as bool? ?? true,
+          playSound: args['play_sound'] as bool? ?? true,
+          silent: args['silent'] as bool? ?? false,
+          priority: args['priority'] as String? ?? 'default',
+          timeoutAfterMs: args['timeout_after_ms'] as int?,
+        );
       default:
         return "Error: Unknown system tool '$toolName'";
     }

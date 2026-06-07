@@ -10,6 +10,7 @@ import 'llm_api_client.dart';
 import 'lua_executor.dart';
 import 'mcp_client.dart';
 import 'notification_service.dart';
+import 'web_crawler.dart';
 
 /// Chat controller managing sessions, messages, model selection, MCP tools,
 /// tool selection, and streaming.
@@ -157,6 +158,36 @@ class ChatController extends ChangeNotifier {
             },
           },
           'required': ['title'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'web_crawl',
+        description:
+            'Fetch and extract readable text content from a web page URL. '
+            'Returns the page title and main text content with HTML stripped. '
+            'Use this to read articles, documentation, blog posts, or any web page. '
+            'Supports HTTP/HTTPS. Content is capped at 50KB of text.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'url': {
+              'type': 'string',
+              'description':
+                  'The URL to crawl (e.g. "https://example.com/page"). '
+                  'HTTP URLs are supported but HTTPS is preferred.',
+            },
+            'include_links': {
+              'type': 'boolean',
+              'description':
+                  'If true, hyperlink URLs are included inline after link text '
+                  'in [url] format. Defaults to false.',
+            },
+          },
+          'required': ['url'],
         },
       ),
       isSystemTool: true,
@@ -1041,6 +1072,17 @@ class ChatController extends ChangeNotifier {
           priority: args['priority'] as String? ?? 'default',
           timeoutAfterMs: args['timeout_after_ms'] as int?,
         );
+      case 'web_crawl':
+        final url = args['url'] as String? ?? '';
+        if (url.trim().isEmpty) {
+          return 'Error: URL is required.';
+        }
+        final includeLinks = args['include_links'] as bool? ?? false;
+        final result = await WebCrawler.crawl(url, includeLinks: includeLinks);
+        if (!result.isSuccess) {
+          return 'Error: ${result.error}';
+        }
+        return result.toString();
       default:
         return "Error: Unknown system tool '$toolName'";
     }

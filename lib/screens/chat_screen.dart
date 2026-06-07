@@ -300,173 +300,408 @@ class ModelSelectorChip extends StatefulWidget {
 }
 
 class _ModelSelectorChipState extends State<ModelSelectorChip> {
+  final _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void didUpdateWidget(ModelSelectorChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _overlayEntry?.markNeedsBuild();
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _toggleOverlay() {
+    if (_overlayEntry != null) {
+      _removeOverlay();
+      return;
+    }
+    _overlayEntry = OverlayEntry(
+      builder: (_) => _ModelPickerDropdown(
+        layerLink: _layerLink,
+        models: widget.models,
+        selectedModel: widget.selectedModel,
+        isLoading: widget.isLoading,
+        error: widget.error,
+        onModelSelected: (model) {
+          widget.onModelSelected(model);
+          _removeOverlay();
+        },
+        onDismiss: _removeOverlay,
+      ),
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return PopupMenuButton<dynamic>(
-      offset: const Offset(0, 48),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onSelected: (value) {
-        if (value is LlmModel) {
-          widget.onModelSelected(value);
-        } else if (value == '__refresh__') {
-          widget.onRefresh();
-        }
-      },
-      itemBuilder: (context) {
-        final items = <PopupMenuEntry<dynamic>>[];
-
-        items.add(
-          PopupMenuItem<dynamic>(
-            value: '__refresh__',
-            child: Row(
-              children: [
-                Icon(Icons.refresh, size: 16, color: cs.primary),
-                const SizedBox(width: 8),
-                Text(
-                  widget.isLoading ? 'Fetching models...' : 'Refresh models',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: cs.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: cs.outline.withValues(alpha: 0.15),
+            width: 1,
           ),
-        );
-        items.add(const PopupMenuDivider());
-
-        if (widget.isLoading && widget.models.isEmpty) {
-          items.add(
-            PopupMenuItem<dynamic>(
-              enabled: false,
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-          );
-        } else if (widget.error != null && widget.models.isEmpty) {
-          items.add(
-            PopupMenuItem<dynamic>(
-              enabled: false,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Model picker toggle ──
+            GestureDetector(
+              onTap: _toggleOverlay,
+              behavior: HitTestBehavior.opaque,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.error_outline, size: 16, color: cs.error),
-                    const SizedBox(width: 8),
-                    Expanded(
+                    if (widget.isLoading)
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      )
+                    else if (widget.error != null && widget.models.isEmpty)
+                      Icon(Icons.error_outline, size: 14, color: cs.error)
+                    else
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(7),
+                        child: Image.asset(
+                          'assets/icons/app_icon.png',
+                          width: 14,
+                          height: 14,
+                        ),
+                      ),
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 160),
                       child: Text(
-                        widget.error!,
-                        style: TextStyle(fontSize: 12, color: cs.error),
-                        maxLines: 3,
+                        widget.selectedModel?.displayName ?? 'Select model',
+                        style: Theme.of(context).textTheme.labelMedium,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      _overlayEntry != null
+                          ? Icons.expand_more
+                          : Icons.expand_less,
+                      size: 16,
+                      color: cs.onSurfaceVariant,
                     ),
                   ],
                 ),
               ),
             ),
-          );
-        } else {
-          final grouped = <String, List<LlmModel>>{};
-          for (final m in widget.models) {
-            (grouped[m.provider] ??= []).add(m);
-          }
-
-          var isFirst = true;
-          for (final entry in grouped.entries) {
-            if (!isFirst) items.add(const PopupMenuDivider());
-            isFirst = false;
-
-            items.add(
-              PopupMenuItem<dynamic>(
-                enabled: false,
-                height: 32,
-                child: Text(
-                  entry.key,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: cs.primary,
-                  ),
-                ),
+            // ── Divider ──
+            Container(
+              width: 1,
+              height: 22,
+              color: cs.outline.withValues(alpha: 0.25),
+            ),
+            // ── Refresh split button ──
+            InkWell(
+              onTap: widget.isLoading ? null : widget.onRefresh,
+              borderRadius: const BorderRadius.horizontal(
+                right: Radius.circular(20),
               ),
-            );
-
-            for (final model in entry.value) {
-              items.add(
-                PopupMenuItem<dynamic>(
-                  value: model,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          model.displayName,
-                          style: const TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                child: widget.isLoading
+                    ? SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: cs.primary,
                         ),
-                      ),
-                      if (model.id == widget.selectedModel?.id)
-                        Icon(Icons.check, size: 18, color: cs.primary),
-                    ],
-                  ),
-                ),
-              );
-            }
-          }
-        }
-
-        return items;
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.isLoading)
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: cs.onSurfaceVariant,
-                ),
-              )
-            else if (widget.error != null && widget.models.isEmpty)
-              Icon(Icons.error_outline, size: 14, color: cs.error)
-            else
-              ClipRRect(
-                borderRadius: BorderRadius.circular(7),
-                child: Image.asset(
-                  'assets/icons/app_icon.png',
-                  width: 14,
-                  height: 14,
-                ),
-              ),
-            const SizedBox(width: 4),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 160),
-              child: Text(
-                widget.selectedModel?.displayName ?? 'Select model',
-                style: Theme.of(context).textTheme.labelMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                      )
+                    : Icon(Icons.refresh, size: 16, color: cs.onSurfaceVariant),
               ),
             ),
-            Icon(Icons.arrow_drop_down, size: 14, color: cs.onSurfaceVariant),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Model Picker Dropdown Overlay ────────────────────────────────────────────
+
+class _ModelPickerDropdown extends StatefulWidget {
+  final LayerLink layerLink;
+  final List<LlmModel> models;
+  final LlmModel? selectedModel;
+  final bool isLoading;
+  final String? error;
+  final ValueChanged<LlmModel> onModelSelected;
+  final VoidCallback onDismiss;
+
+  const _ModelPickerDropdown({
+    required this.layerLink,
+    required this.models,
+    required this.selectedModel,
+    required this.isLoading,
+    required this.error,
+    required this.onModelSelected,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_ModelPickerDropdown> createState() => _ModelPickerDropdownState();
+}
+
+class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final filtered = _query.isEmpty
+        ? widget.models
+        : widget.models.where((m) {
+            final q = _query.toLowerCase();
+            return m.displayName.toLowerCase().contains(q) ||
+                m.provider.toLowerCase().contains(q);
+          }).toList();
+
+    final grouped = <String, List<LlmModel>>{};
+    for (final m in filtered) {
+      (grouped[m.provider] ??= []).add(m);
+    }
+
+    return Stack(
+      children: [
+        // Dismiss barrier
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: widget.onDismiss,
+            behavior: HitTestBehavior.opaque,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        // Dropdown panel
+        CompositedTransformFollower(
+          link: widget.layerLink,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, 6),
+          child: Material(
+            elevation: 8,
+            shadowColor: Colors.black38,
+            borderRadius: BorderRadius.circular(12),
+            color: cs.surfaceContainer,
+            child: Container(
+              width: 280,
+              constraints: const BoxConstraints(maxHeight: 400),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Search field
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      onChanged: (v) => setState(() => _query = v),
+                      style: const TextStyle(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Search models…',
+                        hintStyle: TextStyle(
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Icon(
+                            Icons.search,
+                            size: 16,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        prefixIconConstraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        suffixIcon: _query.isNotEmpty
+                            ? IconButton(
+                                padding: EdgeInsets.zero,
+                                iconSize: 14,
+                                icon: Icon(
+                                  Icons.close,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                onPressed: () => setState(() {
+                                  _query = '';
+                                  _searchController.clear();
+                                }),
+                              )
+                            : null,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 4,
+                        ),
+                        isDense: true,
+                        filled: true,
+                        fillColor: cs.surfaceContainerHighest,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Divider(height: 1, color: cs.outline.withValues(alpha: 0.15)),
+                  // Model list
+                  Flexible(
+                    child: widget.isLoading && widget.models.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          )
+                        : widget.error != null && widget.models.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 16,
+                                  color: cs.error,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    widget.error!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.error,
+                                    ),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : grouped.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'No models match "$_query"',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onSurfaceVariant,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            shrinkWrap: true,
+                            children: [
+                              for (final entry in grouped.entries) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    8,
+                                    14,
+                                    2,
+                                  ),
+                                  child: Text(
+                                    entry.key,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                ),
+                                for (final model in entry.value)
+                                  InkWell(
+                                    onTap: () => widget.onModelSelected(model),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 9,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              model.displayName,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (model.id ==
+                                              widget.selectedModel?.id)
+                                            Icon(
+                                              Icons.check,
+                                              size: 16,
+                                              color: cs.primary,
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                Divider(
+                                  height: 1,
+                                  indent: 14,
+                                  endIndent: 14,
+                                  color: cs.outline.withValues(alpha: 0.08),
+                                ),
+                              ],
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1381,8 +1616,12 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
             constraints: const BoxConstraints(maxHeight: 200),
             margin: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              color: cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.5),
+                width: 1,
+              ),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

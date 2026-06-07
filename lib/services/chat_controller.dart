@@ -52,11 +52,7 @@ class ChatController extends ChangeNotifier {
         name: 'current_date_time',
         description:
             'Returns the current local date and time in a human-readable format.',
-        inputSchema: {
-          'type': 'object',
-          'properties': {},
-          'required': [],
-        },
+        inputSchema: {'type': 'object', 'properties': {}, 'required': []},
       ),
       isSystemTool: true,
     ),
@@ -230,6 +226,21 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
 
     // Re-generate the response
+    _generateResponse();
+  }
+
+  void retryFromMessage(String messageId) {
+    final idx = messages.indexWhere((m) => m.id == messageId);
+    if (idx < 0 || messages[idx].role != MessageRole.user) return;
+    if (isGenerating) return;
+
+    // Remove all messages after the user message
+    messages.removeRange(idx + 1, messages.length);
+
+    _saveCurrentSession();
+    notifyListeners();
+
+    // Re-generate the response with the same message
     _generateResponse();
   }
 
@@ -637,9 +648,7 @@ class ChatController extends ChangeNotifier {
 
     // Build system prompt
     final systemParts = <String>[];
-    systemParts.add(
-      'You are Synapse, a helpful AI assistant.',
-    );
+    systemParts.add('You are Synapse, a helpful AI assistant.');
 
     // User-defined system prompt
     final userSystemPrompt = settings.systemPrompt;

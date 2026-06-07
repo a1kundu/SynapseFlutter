@@ -193,6 +193,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _retryMessage(String messageId) {
+    _ctrl.retryFromMessage(messageId);
+  }
+
   void _exportChat() {
     final json = _ctrl.exportChatToJson();
     final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
@@ -223,6 +227,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onCopy: _copyMessage,
                       onEdit: _showEditDialog,
                       onFork: _forkChat,
+                      onRetry: _retryMessage,
                       isGenerating: _ctrl.isGenerating,
                     );
                   },
@@ -541,186 +546,195 @@ class _ModelPickerDropdownState extends State<_ModelPickerDropdown> {
                   ),
                 ],
               ),
-            child: Container(
-              width: 280,
-              constraints: const BoxConstraints(maxHeight: 400),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Search field
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-                    child: TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      onChanged: (v) => setState(() => _query = v),
-                      style: const TextStyle(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'Search models…',
-                        hintStyle: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant,
-                        ),
-                        prefixIcon: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Icon(
-                            Icons.search,
-                            size: 16,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                        prefixIconConstraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
-                        ),
-                        suffixIcon: _query.isNotEmpty
-                            ? IconButton(
-                                padding: EdgeInsets.zero,
-                                iconSize: 14,
-                                icon: Icon(
-                                  Icons.close,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                                onPressed: () => setState(() {
-                                  _query = '';
-                                  _searchController.clear();
-                                }),
-                              )
-                            : null,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 8,
-                          horizontal: 4,
-                        ),
-                        isDense: true,
-                        filled: true,
-                        fillColor: cs.surfaceContainerHighest,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Divider(height: 1, color: cs.outline.withValues(alpha: 0.15)),
-                  // Model list
-                  Flexible(
-                    child: widget.isLoading && widget.models.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Center(
-                              child: SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
+              child: Container(
+                width: 280,
+                constraints: const BoxConstraints(maxHeight: 400),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Search field
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          onChanged: (v) => setState(() => _query = v),
+                          style: const TextStyle(fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: 'Search models…',
+                            hintStyle: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
                               ),
-                            ),
-                          )
-                        : widget.error != null && widget.models.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.error_outline,
-                                  size: 16,
-                                  color: cs.error,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    widget.error!,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: cs.error,
-                                    ),
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : grouped.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              'No models match "$_query"',
-                              style: TextStyle(
-                                fontSize: 12,
+                              child: Icon(
+                                Icons.search,
+                                size: 16,
                                 color: cs.onSurfaceVariant,
                               ),
-                              textAlign: TextAlign.center,
                             ),
-                          )
-                        : ListView(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            shrinkWrap: true,
-                            children: [
-                              for (final entry in grouped.entries) ...[
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    14,
-                                    8,
-                                    14,
-                                    2,
-                                  ),
-                                  child: Text(
-                                    entry.key,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: cs.primary,
+                            prefixIconConstraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                            suffixIcon: _query.isNotEmpty
+                                ? IconButton(
+                                    padding: EdgeInsets.zero,
+                                    iconSize: 14,
+                                    icon: Icon(
+                                      Icons.close,
+                                      color: cs.onSurfaceVariant,
                                     ),
-                                  ),
-                                ),
-                                for (final model in entry.value)
-                                  InkWell(
-                                    onTap: () => widget.onModelSelected(model),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 9,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              model.displayName,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          if (model.id ==
-                                              widget.selectedModel?.id)
-                                            Icon(
-                                              Icons.check,
-                                              size: 16,
-                                              color: cs.primary,
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                Divider(
-                                  height: 1,
-                                  indent: 14,
-                                  endIndent: 14,
-                                  color: cs.outline.withValues(alpha: 0.08),
-                                ),
-                              ],
-                            ],
+                                    onPressed: () => setState(() {
+                                      _query = '';
+                                      _searchController.clear();
+                                    }),
+                                  )
+                                : null,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 4,
+                            ),
+                            isDense: true,
+                            filled: true,
+                            fillColor: cs.surfaceContainerHighest,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
+                        ),
+                      ),
+                      Divider(
+                        height: 1,
+                        color: cs.outline.withValues(alpha: 0.15),
+                      ),
+                      // Model list
+                      Flexible(
+                        child: widget.isLoading && widget.models.isEmpty
+                            ? const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : widget.error != null && widget.models.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      size: 16,
+                                      color: cs.error,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        widget.error!,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: cs.error,
+                                        ),
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : grouped.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  'No models match "$_query"',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : ListView(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                shrinkWrap: true,
+                                children: [
+                                  for (final entry in grouped.entries) ...[
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        14,
+                                        8,
+                                        14,
+                                        2,
+                                      ),
+                                      child: Text(
+                                        entry.key,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: cs.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    for (final model in entry.value)
+                                      InkWell(
+                                        onTap: () =>
+                                            widget.onModelSelected(model),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 9,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  model.displayName,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (model.id ==
+                                                  widget.selectedModel?.id)
+                                                Icon(
+                                                  Icons.check,
+                                                  size: 16,
+                                                  color: cs.primary,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    Divider(
+                                      height: 1,
+                                      indent: 14,
+                                      endIndent: 14,
+                                      color: cs.outline.withValues(alpha: 0.08),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
             ),
           ),
         ),
@@ -790,6 +804,7 @@ class _MessageBubble extends StatefulWidget {
   final ValueChanged<String> onCopy;
   final ValueChanged<ChatMessage> onEdit;
   final ValueChanged<String> onFork;
+  final ValueChanged<String> onRetry;
   final bool isGenerating;
 
   const _MessageBubble({
@@ -797,6 +812,7 @@ class _MessageBubble extends StatefulWidget {
     required this.onCopy,
     required this.onEdit,
     required this.onFork,
+    required this.onRetry,
     required this.isGenerating,
   });
 
@@ -966,6 +982,15 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         _dismissActions();
                       },
                     ),
+                    if (isUser)
+                      _ActionChip(
+                        icon: Icons.refresh,
+                        label: 'Retry',
+                        onTap: () {
+                          widget.onRetry(widget.message.id);
+                          _dismissActions();
+                        },
+                      ),
                   ],
                 ),
               ),

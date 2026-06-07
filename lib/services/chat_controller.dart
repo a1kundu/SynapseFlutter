@@ -908,10 +908,10 @@ class ChatController extends ChangeNotifier {
         .toList();
 
     // Update the assistant message with tool call entries (visible in UI)
+    // Preserve any text content the LLM may have streamed before tool calls.
     _updateMessage(
       assistantId,
-      content: '',
-      toolCalls: toolCallEntries,
+      toolCalls: List<ToolCallEntry>.from(toolCallEntries),
     );
 
     // Execute each tool call and update entries progressively
@@ -955,7 +955,20 @@ class ChatController extends ChangeNotifier {
         toolCallEntries[entryIdx].status = resultContent.startsWith('Error')
             ? ToolCallStatus.error
             : ToolCallStatus.completed;
-        _updateMessage(assistantId, toolCalls: List.from(toolCallEntries));
+        // Create a new list with new entry objects so the UI properly detects changes.
+        _updateMessage(
+          assistantId,
+          toolCalls: [
+            for (final e in toolCallEntries)
+              ToolCallEntry(
+                id: e.id,
+                toolName: e.toolName,
+                arguments: e.arguments,
+                result: e.result,
+                status: e.status,
+              ),
+          ],
+        );
       }
     }
 

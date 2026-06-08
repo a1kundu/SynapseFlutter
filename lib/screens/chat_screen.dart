@@ -1137,7 +1137,7 @@ class _AssistantMarkdown extends StatelessWidget {
 
     return MarkdownBody(
       data: content,
-      selectable: true,
+      selectable: false,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
         p: Theme.of(

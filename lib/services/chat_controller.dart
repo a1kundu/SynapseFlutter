@@ -1312,8 +1312,7 @@ class ChatController extends ChangeNotifier {
       model: model,
       onToken: (token) {
         activity.streamingContent += token;
-        // Trigger a rebuild by re-assigning the same object
-        subAgentActivity.value = activity;
+        subAgentActivity.notify();
       },
       onToolCall: (toolName, arguments, resultContent) {
         if (resultContent == null) {
@@ -1333,7 +1332,7 @@ class ChatController extends ChangeNotifier {
               ? SubAgentToolStatus.error
               : SubAgentToolStatus.completed;
         }
-        subAgentActivity.value = activity;
+        subAgentActivity.notify();
       },
     );
 
@@ -1347,7 +1346,7 @@ class ChatController extends ChangeNotifier {
       // streaming round cleared it
       activity.streamingContent = result.content;
     }
-    subAgentActivity.value = activity;
+    subAgentActivity.notify();
 
     // Store the completed activity so it can be re-opened from the tile
     if (toolCallId != null) {

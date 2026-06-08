@@ -103,4 +103,12 @@ class SubAgentActivity {
 /// shows/hides itself accordingly.
 class SubAgentActivityNotifier extends ValueNotifier<SubAgentActivity?> {
   SubAgentActivityNotifier() : super(null);
+
+  /// Force-notify listeners even when the value reference hasn't changed.
+  /// Required because we mutate the same [SubAgentActivity] object in-place
+  /// (streaming tokens, tool call updates, completion) and [ValueNotifier]'s
+  /// setter skips notification when `_value == newValue` (identity check).
+  void notify() {
+    notifyListeners();
+  }
 }

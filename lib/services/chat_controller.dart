@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../agents/agents.dart';
 import '../models/chat_models.dart';
 import '../models/chat_session.dart';
 import '../models/llm_models.dart';
@@ -21,6 +22,10 @@ class ChatController extends ChangeNotifier {
   final McpClient _mcpClient = McpClient();
   final ChatStorage _storage = ChatStorage.instance;
   final LuaExecutor _luaExecutor = LuaExecutor();
+
+  // ── Multi-agent orchestration ───────────────────────────────────────
+  final AgentExecutor _agentExecutor = AgentExecutor();
+  final AgentRegistry _agentRegistry = AgentRegistry();
 
   int _messageCounter = 0;
 
@@ -268,6 +273,49 @@ class ChatController extends ChangeNotifier {
       ),
       isSystemTool: true,
     ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'delegate_to_agent',
+        description:
+            'Delegate a task to a specialized sub-agent. Each sub-agent has '
+            'its own expertise and tools. Use this when a task is best handled '
+            'by a specialist rather than doing everything yourself.\n\n'
+            'Available agents:\n'
+            '- **researcher**: Web research specialist -- can search the internet, '
+            'read web pages, and call REST APIs to gather information.\n'
+            '- **coder**: Code execution specialist -- can write and run Lua scripts '
+            'for computation, data processing, and problem solving.\n'
+            '- **summarizer**: Text analysis specialist -- distills information into '
+            'clear, concise summaries (no tools, pure reasoning).\n\n'
+            'The sub-agent will execute independently and return its result to you. '
+            'You can then use that result to continue your response.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'agent': {
+              'type': 'string',
+              'enum': ['researcher', 'coder', 'summarizer'],
+              'description': 'The sub-agent to delegate the task to.',
+            },
+            'task': {
+              'type': 'string',
+              'description':
+                  'A clear, detailed description of the task for the sub-agent. '
+                  'Include all necessary context the sub-agent needs to complete the task.',
+            },
+            'context': {
+              'type': 'string',
+              'description':
+                  'Optional additional context or data to pass to the sub-agent '
+                  '(e.g. text to summarize, prior research results, etc.).',
+            },
+          },
+          'required': ['agent', 'task'],
+        },
+      ),
+      isSystemTool: true,
+    ),
   ];
 
   /// All tools: system + MCP.
@@ -289,6 +337,11 @@ class ChatController extends ChangeNotifier {
   }
 
   ChatController() {
+    // Register built-in sub-agents
+    _agentRegistry.register(ResearcherAgent());
+    _agentRegistry.register(CoderAgent());
+    _agentRegistry.register(SummarizerAgent());
+
     _loadSessions();
     refreshModels();
     refreshMcpTools();
@@ -1199,9 +1252,45 @@ class ChatController extends ChangeNotifier {
           body: body,
           timeoutSeconds: timeoutSeconds,
         );
+      case 'delegate_to_agent':
+        return await _executeDelegateToAgent(args);
       default:
         return "Error: Unknown system tool '$toolName'";
     }
+  }
+
+  /// Execute the delegate_to_agent meta-tool: run a sub-agent via
+  /// [AgentExecutor] and return its result as a tool output.
+  Future<String> _executeDelegateToAgent(Map<String, dynamic> args) async {
+    final agentName = args['agent'] as String? ?? '';
+    final taskDesc = args['task'] as String? ?? '';
+    final context = args['context'] as String?;
+
+    if (agentName.isEmpty) return 'Error: Agent name is required.';
+    if (taskDesc.isEmpty) return 'Error: Task description is required.';
+
+    final agent = _agentRegistry.get(agentName);
+    if (agent == null) {
+      return 'Error: Unknown agent "$agentName". '
+          'Available agents: ${_agentRegistry.names.join(", ")}';
+    }
+
+    // Use the currently selected model for the sub-agent
+    final model = selectedModel;
+    if (model == null) return 'Error: No model selected for sub-agent execution.';
+
+    final task = AgentTask(description: taskDesc, context: context);
+    final result = await _agentExecutor.run(
+      agent: agent,
+      task: task,
+      model: model,
+    );
+
+    if (!result.success) {
+      return 'Sub-agent "$agentName" failed: ${result.error}';
+    }
+
+    return '[Sub-agent: ${agent.name}]\n\n${result.content}';
   }
 
   void _updateMessage(String id, {String? content, bool? streaming, List<ToolCallEntry>? toolCalls}) {

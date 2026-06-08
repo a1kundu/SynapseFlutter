@@ -2462,6 +2462,7 @@ class _ChatInputBar extends StatelessWidget {
               child: TextField(
                 controller: textController,
                 focusNode: focusNode,
+                autofocus: false,
                 onChanged: onTextChange,
                 onSubmitted: (_) {
                   if (textController.text.trim().isNotEmpty && !isGenerating) {

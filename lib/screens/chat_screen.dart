@@ -9,6 +9,7 @@ import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:highlight/highlight.dart' show highlight;
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../agents/agent_models.dart';
 import '../models/chat_models.dart';
 import '../services/chat_controller.dart';
 import '../utils/snackbar_service.dart';
@@ -30,6 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  bool _subAgentDialogShowing = false;
 
   ChatController get _ctrl => widget.controller;
 
@@ -37,6 +39,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _ctrl.addListener(_onControllerChanged);
+    _ctrl.subAgentActivity.addListener(_onSubAgentActivityChanged);
     _textController.text = _ctrl.inputText;
   }
 
@@ -45,17 +48,41 @@ class _ChatScreenState extends State<ChatScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onControllerChanged);
+      oldWidget.controller.subAgentActivity.removeListener(_onSubAgentActivityChanged);
       widget.controller.addListener(_onControllerChanged);
+      widget.controller.subAgentActivity.addListener(_onSubAgentActivityChanged);
     }
   }
 
   @override
   void dispose() {
     _ctrl.removeListener(_onControllerChanged);
+    _ctrl.subAgentActivity.removeListener(_onSubAgentActivityChanged);
     _scrollController.dispose();
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _onSubAgentActivityChanged() {
+    final activity = _ctrl.subAgentActivity.value;
+    if (activity != null && !_subAgentDialogShowing) {
+      _subAgentDialogShowing = true;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black54,
+        builder: (dialogContext) => _SubAgentDialog(
+          activityNotifier: _ctrl.subAgentActivity,
+          onDismiss: () {
+            Navigator.of(dialogContext).pop();
+            _subAgentDialogShowing = false;
+          },
+        ),
+      ).then((_) {
+        _subAgentDialogShowing = false;
+      });
+    }
   }
 
   void _onControllerChanged() {
@@ -2572,6 +2599,367 @@ class _MermaidCodeBlockState extends State<_MermaidCodeBlock> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Sub-Agent Live Activity Dialog ─────────────────────────────────────
+
+/// Dialog that shows real-time sub-agent activity, mirroring the main
+/// chat experience: streaming text, tool call tiles, and status indicators.
+class _SubAgentDialog extends StatefulWidget {
+  final SubAgentActivityNotifier activityNotifier;
+  final VoidCallback onDismiss;
+
+  const _SubAgentDialog({
+    required this.activityNotifier,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_SubAgentDialog> createState() => _SubAgentDialogState();
+}
+
+class _SubAgentDialogState extends State<_SubAgentDialog> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.activityNotifier.addListener(_onActivityChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.activityNotifier.removeListener(_onActivityChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onActivityChanged() {
+    final activity = widget.activityNotifier.value;
+    if (activity == null) {
+      // Sub-agent cleared -- dismiss the dialog
+      widget.onDismiss();
+      return;
+    }
+    setState(() {});
+    // Auto-scroll to bottom as content streams in
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activity = widget.activityNotifier.value;
+    if (activity == null) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final contentColor = isDark ? Colors.white : Colors.black87;
+    final screenSize = MediaQuery.of(context).size;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: screenSize.height * 0.75,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Header ──────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.4),
+                border: Border(
+                  bottom: BorderSide(
+                    color: cs.outlineVariant.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    activity.isRunning
+                        ? Icons.smart_toy_outlined
+                        : Icons.smart_toy_rounded,
+                    size: 20,
+                    color: activity.isComplete && activity.error != null
+                        ? cs.error
+                        : cs.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Agent: ${activity.agentName[0].toUpperCase()}${activity.agentName.substring(1)}',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          activity.taskDescription,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: contentColor.withValues(alpha: 0.6),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (activity.isRunning)
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.primary,
+                      ),
+                    )
+                  else
+                    Icon(
+                      activity.error != null
+                          ? Icons.error_outline_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 18,
+                      color: activity.error != null ? cs.error : Colors.green,
+                    ),
+                ],
+              ),
+            ),
+
+            // ── Scrollable content ──────────────────────────────
+            Flexible(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Tool calls
+                    if (activity.toolCalls.isNotEmpty) ...[
+                      ...activity.toolCalls.map((tc) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: _SubAgentToolCallTile(
+                          toolCall: tc,
+                          contentColor: contentColor,
+                        ),
+                      )),
+                      if (activity.streamingContent.isNotEmpty)
+                        const SizedBox(height: 10),
+                    ],
+
+                    // Streaming text content
+                    if (activity.streamingContent.isNotEmpty)
+                      SelectableText(
+                        activity.streamingContent,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: contentColor,
+                        ),
+                      )
+                    else if (activity.isRunning && activity.toolCalls.isEmpty)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _StreamingIndicator(tint: contentColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Thinking...',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: contentColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    // Error
+                    if (activity.error != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, size: 16, color: cs.error),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                activity.error!,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: cs.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Footer ──────────────────────────────────────────
+            if (activity.isComplete)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: widget.onDismiss,
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A tool call tile within the sub-agent dialog.
+class _SubAgentToolCallTile extends StatefulWidget {
+  final SubAgentToolCall toolCall;
+  final Color contentColor;
+
+  const _SubAgentToolCallTile({
+    required this.toolCall,
+    required this.contentColor,
+  });
+
+  @override
+  State<_SubAgentToolCallTile> createState() => _SubAgentToolCallTileState();
+}
+
+class _SubAgentToolCallTileState extends State<_SubAgentToolCallTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasResult = widget.toolCall.result != null &&
+        widget.toolCall.result!.isNotEmpty;
+
+    final IconData icon;
+    final Color iconColor;
+    switch (widget.toolCall.status) {
+      case SubAgentToolStatus.running:
+        icon = Icons.hourglass_top_rounded;
+        iconColor = cs.tertiary;
+      case SubAgentToolStatus.completed:
+        icon = Icons.check_circle_outline_rounded;
+        iconColor = Colors.green;
+      case SubAgentToolStatus.error:
+        icon = Icons.error_outline_rounded;
+        iconColor = cs.error;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: hasResult
+              ? () => setState(() => _expanded = !_expanded)
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: widget.contentColor.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: iconColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    widget.toolCall.toolName,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: widget.contentColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasResult) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 16,
+                    color: widget.contentColor.withValues(alpha: 0.5),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (_expanded && hasResult) ...[
+          const SizedBox(height: 4),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.toolCall.arguments.isNotEmpty &&
+                    widget.toolCall.arguments != '{}') ...[
+                  _CopyableSection(
+                    label: 'Arguments',
+                    content: widget.toolCall.arguments,
+                    contentColor: widget.contentColor,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                _CopyableSection(
+                  label: 'Result',
+                  content: widget.toolCall.result!,
+                  contentColor: widget.contentColor,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

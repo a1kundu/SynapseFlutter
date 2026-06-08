@@ -27,6 +27,10 @@ class ChatController extends ChangeNotifier {
   final AgentExecutor _agentExecutor = AgentExecutor();
   final AgentRegistry _agentRegistry = AgentRegistry();
 
+  /// Notifier for live sub-agent activity. The UI listens to this to
+  /// show/hide the sub-agent dialog. null = no sub-agent running.
+  final SubAgentActivityNotifier subAgentActivity = SubAgentActivityNotifier();
+
   int _messageCounter = 0;
 
   // ── Session management ────────────────────────────────────────────────
@@ -1261,6 +1265,9 @@ class ChatController extends ChangeNotifier {
 
   /// Execute the delegate_to_agent meta-tool: run a sub-agent via
   /// [AgentExecutor] and return its result as a tool output.
+  ///
+  /// Pushes live updates to [subAgentActivity] so the UI can show a
+  /// real-time dialog of the sub-agent's progress.
   Future<String> _executeDelegateToAgent(Map<String, dynamic> args) async {
     final agentName = args['agent'] as String? ?? '';
     final taskDesc = args['task'] as String? ?? '';
@@ -1279,12 +1286,65 @@ class ChatController extends ChangeNotifier {
     final model = selectedModel;
     if (model == null) return 'Error: No model selected for sub-agent execution.';
 
+    // Start live activity tracking
+    final activity = SubAgentActivity(
+      agentName: agent.name,
+      agentRole: agent.role,
+      taskDescription: taskDesc,
+    );
+    subAgentActivity.value = activity;
+
     final task = AgentTask(description: taskDesc, context: context);
     final result = await _agentExecutor.run(
       agent: agent,
       task: task,
       model: model,
+      onToken: (token) {
+        activity.streamingContent += token;
+        // Trigger a rebuild by re-assigning the same object
+        subAgentActivity.value = activity;
+      },
+      onToolCall: (toolName, arguments, resultContent) {
+        if (resultContent == null) {
+          // Tool call started
+          activity.toolCalls.add(SubAgentToolCall(
+            toolName: toolName,
+            arguments: arguments,
+          ));
+        } else {
+          // Tool call finished -- update the last matching entry
+          final entry = activity.toolCalls.lastWhere(
+            (t) => t.toolName == toolName && t.result == null,
+            orElse: () => activity.toolCalls.last,
+          );
+          entry.result = resultContent;
+          entry.status = resultContent.startsWith('Error')
+              ? SubAgentToolStatus.error
+              : SubAgentToolStatus.completed;
+        }
+        subAgentActivity.value = activity;
+      },
     );
+
+    // Mark activity as complete
+    activity.isRunning = false;
+    activity.isComplete = true;
+    if (!result.success) {
+      activity.error = result.error;
+    } else {
+      // Update streaming content with final result in case the last
+      // streaming round cleared it
+      activity.streamingContent = result.content;
+    }
+    subAgentActivity.value = activity;
+
+    // Clear activity after a short delay so the UI can show the final state
+    Future.delayed(const Duration(milliseconds: 500), () {
+      // Only clear if it's still the same activity (not a new sub-agent)
+      if (subAgentActivity.value == activity) {
+        subAgentActivity.value = null;
+      }
+    });
 
     if (!result.success) {
       return 'Sub-agent "$agentName" failed: ${result.error}';

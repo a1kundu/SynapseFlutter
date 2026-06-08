@@ -1246,34 +1246,98 @@ class _SelectableAssistantMarkdown extends StatefulWidget {
 class _SelectableAssistantMarkdownState
     extends State<_SelectableAssistantMarkdown> {
   String _selectedText = '';
+  bool _hasSelection = false;
 
   @override
   Widget build(BuildContext context) {
-    return SelectionArea(
-      onSelectionChanged: (content) {
-        _selectedText = content?.plainText ?? '';
-      },
-      contextMenuBuilder: (context, selectableRegionState) {
-        return AdaptiveTextSelectionToolbar.buttonItems(
-          anchors: selectableRegionState.contextMenuAnchors,
-          buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems,
-            ContextMenuButtonItem(
-              label: 'Quote',
-              onPressed: () {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SelectionArea(
+          onSelectionChanged: (content) {
+            final text = content?.plainText ?? '';
+            final selected = text.isNotEmpty;
+            if (selected != _hasSelection) {
+              setState(() {
+                _selectedText = text;
+                _hasSelection = selected;
+              });
+            } else {
+              _selectedText = text;
+            }
+          },
+          contextMenuBuilder: (context, selectableRegionState) {
+            return AdaptiveTextSelectionToolbar.buttonItems(
+              anchors: selectableRegionState.contextMenuAnchors,
+              buttonItems: [
+                ...selectableRegionState.contextMenuButtonItems,
+                ContextMenuButtonItem(
+                  label: 'Quote',
+                  onPressed: () {
+                    if (_selectedText.isNotEmpty) {
+                      widget.onQuote(_selectedText);
+                    }
+                    selectableRegionState.hideToolbar();
+                  },
+                ),
+              ],
+            );
+          },
+          child: _AssistantMarkdown(
+            content: widget.content,
+            contentColor: widget.contentColor,
+          ),
+        ),
+
+        // Floating Quote button — appears when text is selected.
+        if (_hasSelection)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: InkWell(
+              onTap: () {
                 if (_selectedText.isNotEmpty) {
                   widget.onQuote(_selectedText);
+                  setState(() {
+                    _hasSelection = false;
+                    _selectedText = '';
+                  });
                 }
-                selectableRegionState.hideToolbar();
               },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: cs.primary.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.format_quote_rounded,
+                      size: 14,
+                      color: cs.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Quote selection',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
-        );
-      },
-      child: _AssistantMarkdown(
-        content: widget.content,
-        contentColor: widget.contentColor,
-      ),
+          ),
+      ],
     );
   }
 }

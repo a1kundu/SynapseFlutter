@@ -10,6 +10,7 @@ import 'llm_api_client.dart';
 import 'lua_executor.dart';
 import 'mcp_client.dart';
 import 'notification_service.dart';
+import 'rest_client_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
 
@@ -217,6 +218,52 @@ class ChatController extends ChangeNotifier {
             },
           },
           'required': ['query'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'rest_request',
+        description:
+            'Make an HTTP request to any REST API endpoint. '
+            'Supports GET, POST, PUT, PATCH, DELETE, HEAD, and OPTIONS methods. '
+            'Returns the status code, relevant headers, and response body. '
+            'JSON responses are automatically pretty-printed. '
+            'Use this to call APIs, test endpoints, fetch data, or interact with web services.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'method': {
+              'type': 'string',
+              'enum': ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
+              'description': 'The HTTP method. Defaults to GET.',
+            },
+            'url': {
+              'type': 'string',
+              'description':
+                  'The full URL to request (e.g. "https://api.example.com/users").',
+            },
+            'headers': {
+              'type': 'object',
+              'description':
+                  'Optional HTTP headers as key-value pairs. '
+                  'Example: {"Authorization": "Bearer token123", "Content-Type": "application/json"}',
+            },
+            'body': {
+              'type': 'string',
+              'description':
+                  'Request body (for POST, PUT, PATCH). '
+                  'For JSON APIs, provide a JSON string and set Content-Type header to application/json.',
+            },
+            'timeout_seconds': {
+              'type': 'integer',
+              'description':
+                  'Request timeout in seconds (1-60). Defaults to 30.',
+            },
+          },
+          'required': ['url'],
         },
       ),
       isSystemTool: true,
@@ -1132,6 +1179,26 @@ class ChatController extends ChangeNotifier {
         }
         final maxResults = (args['max_results'] as int?) ?? 5;
         return await WebSearchService.search(query, maxResults: maxResults);
+      case 'rest_request':
+        final url = args['url'] as String? ?? '';
+        if (url.trim().isEmpty) {
+          return 'Error: URL is required.';
+        }
+        final method = (args['method'] as String?) ?? 'GET';
+        final headersRaw = args['headers'];
+        Map<String, String>? headers;
+        if (headersRaw is Map) {
+          headers = headersRaw.map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
+        final body = args['body'] as String?;
+        final timeoutSeconds = args['timeout_seconds'] as int?;
+        return await RestClientService.request(
+          method: method,
+          url: url,
+          headers: headers,
+          body: body,
+          timeoutSeconds: timeoutSeconds,
+        );
       default:
         return "Error: Unknown system tool '$toolName'";
     }

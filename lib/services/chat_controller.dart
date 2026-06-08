@@ -10,6 +10,7 @@ import 'llm_api_client.dart';
 import 'lua_executor.dart';
 import 'mcp_client.dart';
 import 'notification_service.dart';
+import 'web_search_service.dart';
 import 'web_crawler.dart';
 
 /// Chat controller managing sessions, messages, model selection, MCP tools,
@@ -189,6 +190,33 @@ class ChatController extends ChangeNotifier {
             },
           },
           'required': ['url'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'web_search',
+        description:
+            'Search the web using DuckDuckGo. Returns titles, URLs, and '
+            'snippets for the top results. Use this to find information, '
+            'current events, documentation, code examples, news, etc. '
+            'Combine with web_crawl to read specific results in full.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'query': {
+              'type': 'string',
+              'description': 'The search query.',
+            },
+            'max_results': {
+              'type': 'integer',
+              'description':
+                  'Maximum number of results to return (1-10). Defaults to 5.',
+            },
+          },
+          'required': ['query'],
         },
       ),
       isSystemTool: true,
@@ -1097,6 +1125,13 @@ class ChatController extends ChangeNotifier {
           return 'Error: ${result.error}';
         }
         return result.toString();
+      case 'web_search':
+        final query = args['query'] as String? ?? '';
+        if (query.trim().isEmpty) {
+          return 'Error: Search query is required.';
+        }
+        final maxResults = (args['max_results'] as int?) ?? 5;
+        return await WebSearchService.search(query, maxResults: maxResults);
       default:
         return "Error: Unknown system tool '$toolName'";
     }

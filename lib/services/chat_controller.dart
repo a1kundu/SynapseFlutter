@@ -31,6 +31,10 @@ class ChatController extends ChangeNotifier {
   /// show/hide the sub-agent dialog. null = no sub-agent running.
   final SubAgentActivityNotifier subAgentActivity = SubAgentActivityNotifier();
 
+  /// Completed sub-agent activities, keyed by tool call ID.
+  /// Allows the UI to re-open the dialog for past sub-agent runs.
+  final Map<String, SubAgentActivity> completedSubAgentActivities = {};
+
   int _messageCounter = 0;
 
   // ── Session management ────────────────────────────────────────────────
@@ -1110,7 +1114,8 @@ class ChatController extends ChangeNotifier {
       }
 
       if (serverTool != null && serverTool.isSystemTool) {
-        resultContent = await _executeSystemTool(toolName, args);
+        resultContent = await _executeSystemTool(toolName, args,
+            toolCallId: call.id);
       } else if (serverTool != null) {
         try {
           resultContent = await _mcpClient.callTool(
@@ -1181,8 +1186,9 @@ class ChatController extends ChangeNotifier {
   /// Execute a built-in system tool and return its result.
   Future<String> _executeSystemTool(
     String toolName,
-    Map<String, dynamic> args,
-  ) async {
+    Map<String, dynamic> args, {
+    String? toolCallId,
+  }) async {
     switch (toolName) {
       case 'current_date_time':
         final now = DateTime.now();
@@ -1257,7 +1263,7 @@ class ChatController extends ChangeNotifier {
           timeoutSeconds: timeoutSeconds,
         );
       case 'delegate_to_agent':
-        return await _executeDelegateToAgent(args);
+        return await _executeDelegateToAgent(args, toolCallId: toolCallId);
       default:
         return "Error: Unknown system tool '$toolName'";
     }
@@ -1267,8 +1273,12 @@ class ChatController extends ChangeNotifier {
   /// [AgentExecutor] and return its result as a tool output.
   ///
   /// Pushes live updates to [subAgentActivity] so the UI can show a
-  /// real-time dialog of the sub-agent's progress.
-  Future<String> _executeDelegateToAgent(Map<String, dynamic> args) async {
+  /// real-time dialog of the sub-agent's progress. Completed activities
+  /// are stored in [completedSubAgentActivities] so they can be re-opened.
+  Future<String> _executeDelegateToAgent(
+    Map<String, dynamic> args, {
+    String? toolCallId,
+  }) async {
     final agentName = args['agent'] as String? ?? '';
     final taskDesc = args['task'] as String? ?? '';
     final context = args['context'] as String?;
@@ -1291,6 +1301,7 @@ class ChatController extends ChangeNotifier {
       agentName: agent.name,
       agentRole: agent.role,
       taskDescription: taskDesc,
+      toolCallId: toolCallId,
     );
     subAgentActivity.value = activity;
 
@@ -1338,13 +1349,10 @@ class ChatController extends ChangeNotifier {
     }
     subAgentActivity.value = activity;
 
-    // Clear activity after a short delay so the UI can show the final state
-    Future.delayed(const Duration(milliseconds: 500), () {
-      // Only clear if it's still the same activity (not a new sub-agent)
-      if (subAgentActivity.value == activity) {
-        subAgentActivity.value = null;
-      }
-    });
+    // Store the completed activity so it can be re-opened from the tile
+    if (toolCallId != null) {
+      completedSubAgentActivities[toolCallId] = activity;
+    }
 
     if (!result.success) {
       return 'Sub-agent "$agentName" failed: ${result.error}';

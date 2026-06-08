@@ -33,6 +33,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final FocusNode _focusNode = FocusNode();
   bool _subAgentDialogShowing = false;
 
+  /// The activity the user manually dismissed. Prevents auto-reopening
+  /// the dialog on every token update while the same sub-agent runs.
+  SubAgentActivity? _userDismissedActivity;
+
   ChatController get _ctrl => widget.controller;
 
   @override
@@ -66,23 +70,77 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onSubAgentActivityChanged() {
     final activity = _ctrl.subAgentActivity.value;
-    if (activity != null && !_subAgentDialogShowing) {
-      _subAgentDialogShowing = true;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        barrierColor: Colors.black54,
-        builder: (dialogContext) => _SubAgentDialog(
-          activityNotifier: _ctrl.subAgentActivity,
-          onDismiss: () {
-            Navigator.of(dialogContext).pop();
-            _subAgentDialogShowing = false;
-          },
-        ),
-      ).then((_) {
-        _subAgentDialogShowing = false;
-      });
+
+    if (activity == null) {
+      // Sub-agent finished and was cleared -- reset dismiss tracking
+      _userDismissedActivity = null;
+      return;
     }
+
+    // If this is a different activity than what the user dismissed,
+    // reset the flag (a new sub-agent started)
+    if (_userDismissedActivity != null && _userDismissedActivity != activity) {
+      _userDismissedActivity = null;
+    }
+
+    // Auto-open only if: not already showing, and user hasn't dismissed this one
+    if (!_subAgentDialogShowing && _userDismissedActivity == null) {
+      _openLiveSubAgentDialog();
+    }
+  }
+
+  /// Open the live sub-agent dialog (for a running sub-agent).
+  void _openLiveSubAgentDialog() {
+    if (_subAgentDialogShowing) return;
+    _subAgentDialogShowing = true;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => _SubAgentDialog(
+        activityNotifier: _ctrl.subAgentActivity,
+        onDismiss: () {
+          Navigator.of(dialogContext).pop();
+        },
+      ),
+    ).then((_) {
+      _subAgentDialogShowing = false;
+      // If the sub-agent is still running, mark as user-dismissed
+      final activity = _ctrl.subAgentActivity.value;
+      if (activity != null && activity.isRunning) {
+        _userDismissedActivity = activity;
+      }
+    });
+  }
+
+  /// Show the sub-agent activity dialog for a given tool call.
+  /// If the sub-agent is still running (live), opens the live dialog.
+  /// If completed, opens a static replay dialog.
+  void _showSubAgentActivity(String toolCallId) {
+    // Check if this is the currently running sub-agent
+    final liveActivity = _ctrl.subAgentActivity.value;
+    if (liveActivity != null &&
+        liveActivity.toolCallId == toolCallId &&
+        liveActivity.isRunning) {
+      // Re-open the live dialog and clear the dismiss flag
+      _userDismissedActivity = null;
+      _openLiveSubAgentDialog();
+      return;
+    }
+
+    // Otherwise, show completed activity as static replay
+    final activity = _ctrl.completedSubAgentActivities[toolCallId];
+    if (activity == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => _SubAgentDialog(
+        staticActivity: activity,
+        onDismiss: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
   }
 
   void _onControllerChanged() {
@@ -259,6 +317,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onFork: _forkChat,
                       onRetry: _retryMessage,
                       isGenerating: _ctrl.isGenerating,
+                      onSubAgentTap: _showSubAgentActivity,
                     );
                   },
                 ),
@@ -877,6 +936,7 @@ class _MessageBubble extends StatefulWidget {
   final ValueChanged<String> onFork;
   final ValueChanged<String> onRetry;
   final bool isGenerating;
+  final void Function(String toolCallId)? onSubAgentTap;
 
   const _MessageBubble({
     required this.message,
@@ -885,6 +945,7 @@ class _MessageBubble extends StatefulWidget {
     required this.onFork,
     required this.onRetry,
     required this.isGenerating,
+    this.onSubAgentTap,
   });
 
   @override
@@ -996,6 +1057,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     _ToolCallSteps(
                       toolCalls: widget.message.toolCalls,
                       contentColor: contentColor,
+                      onSubAgentTap: widget.onSubAgentTap,
                     ),
                     if (widget.message.content.isNotEmpty)
                       const SizedBox(height: 10),
@@ -1661,8 +1723,13 @@ class _AttachmentChip extends StatelessWidget {
 class _ToolCallSteps extends StatelessWidget {
   final List<ToolCallEntry> toolCalls;
   final Color contentColor;
+  final void Function(String toolCallId)? onSubAgentTap;
 
-  const _ToolCallSteps({required this.toolCalls, required this.contentColor});
+  const _ToolCallSteps({
+    required this.toolCalls,
+    required this.contentColor,
+    this.onSubAgentTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1696,6 +1763,7 @@ class _ToolCallSteps extends StatelessWidget {
           iconColor: iconColor,
           contentColor: contentColor,
           isSubAgent: isSubAgent,
+          onSubAgentTap: isSubAgent ? onSubAgentTap : null,
         );
       }).toList(),
     );
@@ -1708,6 +1776,7 @@ class _ToolCallTile extends StatefulWidget {
   final Color iconColor;
   final Color contentColor;
   final bool isSubAgent;
+  final void Function(String toolCallId)? onSubAgentTap;
 
   const _ToolCallTile({
     required this.entry,
@@ -1715,6 +1784,7 @@ class _ToolCallTile extends StatefulWidget {
     required this.iconColor,
     required this.contentColor,
     this.isSubAgent = false,
+    this.onSubAgentTap,
   });
 
   @override
@@ -1750,11 +1820,20 @@ class _ToolCallTileState extends State<_ToolCallTile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row (tap to expand)
+          // Header row (tap to expand or open sub-agent dialog)
           InkWell(
-            onTap: hasResult
-                ? () => setState(() => _expanded = !_expanded)
-                : null,
+            onTap: widget.isSubAgent && hasResult
+                ? () {
+                    // Open the sub-agent activity dialog
+                    if (widget.onSubAgentTap != null) {
+                      widget.onSubAgentTap!(widget.entry.id);
+                    } else {
+                      setState(() => _expanded = !_expanded);
+                    }
+                  }
+                : hasResult
+                    ? () => setState(() => _expanded = !_expanded)
+                    : null,
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1802,9 +1881,11 @@ class _ToolCallTileState extends State<_ToolCallTile> {
                   if (hasResult) ...[
                     const SizedBox(width: 4),
                     Icon(
-                      _expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
+                      widget.isSubAgent && widget.onSubAgentTap != null
+                          ? Icons.open_in_new_rounded
+                          : _expanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
                       size: 16,
                       color: widget.contentColor.withValues(alpha: 0.5),
                     ),
@@ -2608,11 +2689,17 @@ class _MermaidCodeBlockState extends State<_MermaidCodeBlock> {
 /// Dialog that shows real-time sub-agent activity, mirroring the main
 /// chat experience: streaming text, tool call tiles, and status indicators.
 class _SubAgentDialog extends StatefulWidget {
-  final SubAgentActivityNotifier activityNotifier;
+  /// Live notifier for a running sub-agent. null when showing a static replay.
+  final SubAgentActivityNotifier? activityNotifier;
+
+  /// Static activity for replaying a completed sub-agent run.
+  final SubAgentActivity? staticActivity;
+
   final VoidCallback onDismiss;
 
   const _SubAgentDialog({
-    required this.activityNotifier,
+    this.activityNotifier,
+    this.staticActivity,
     required this.onDismiss,
   });
 
@@ -2623,21 +2710,31 @@ class _SubAgentDialog extends StatefulWidget {
 class _SubAgentDialogState extends State<_SubAgentDialog> {
   final ScrollController _scrollController = ScrollController();
 
+  /// Whether this is a live dialog (with a notifier) or a static replay.
+  bool get _isLive => widget.activityNotifier != null;
+
+  SubAgentActivity? get _activity =>
+      _isLive ? widget.activityNotifier!.value : widget.staticActivity;
+
   @override
   void initState() {
     super.initState();
-    widget.activityNotifier.addListener(_onActivityChanged);
+    if (_isLive) {
+      widget.activityNotifier!.addListener(_onActivityChanged);
+    }
   }
 
   @override
   void dispose() {
-    widget.activityNotifier.removeListener(_onActivityChanged);
+    if (_isLive) {
+      widget.activityNotifier!.removeListener(_onActivityChanged);
+    }
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onActivityChanged() {
-    final activity = widget.activityNotifier.value;
+    final activity = widget.activityNotifier!.value;
     if (activity == null) {
       // Sub-agent cleared -- dismiss the dialog
       widget.onDismiss();
@@ -2658,7 +2755,7 @@ class _SubAgentDialogState extends State<_SubAgentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final activity = widget.activityNotifier.value;
+    final activity = _activity;
     if (activity == null) return const SizedBox.shrink();
 
     final cs = Theme.of(context).colorScheme;
@@ -2819,7 +2916,7 @@ class _SubAgentDialogState extends State<_SubAgentDialog> {
             ),
 
             // ── Footer ──────────────────────────────────────────
-            if (activity.isComplete)
+            if (activity.isComplete || !_isLive)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(

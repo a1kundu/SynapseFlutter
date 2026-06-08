@@ -66,6 +66,9 @@ class SubAgentActivity {
   /// The task description given to the sub-agent.
   final String taskDescription;
 
+  /// The tool call ID that triggered this sub-agent (for matching with tiles).
+  final String? toolCallId;
+
   /// The content being streamed by the sub-agent (accumulated tokens).
   String streamingContent;
 
@@ -85,6 +88,7 @@ class SubAgentActivity {
     required this.agentName,
     required this.agentRole,
     required this.taskDescription,
+    this.toolCallId,
     this.streamingContent = '',
     List<SubAgentToolCall>? toolCalls,
     this.isRunning = true,

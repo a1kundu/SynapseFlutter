@@ -30,7 +30,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  String? _quotedText;
 
   ChatController get _ctrl => widget.controller;
 
@@ -60,8 +59,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onControllerChanged() {
-    // Clear quote when conversation is cleared or session switched.
-    if (_ctrl.messages.isEmpty) _quotedText = null;
     setState(() {});
     if (_ctrl.messages.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -79,19 +76,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void _onSend() {
     final text = _textController.text;
     if (text.trim().isEmpty && _ctrl.pendingAttachments.isEmpty) return;
-    // Prepend quoted context if present.
-    final quote = _quotedText;
-    final messageText = quote != null && quote.isNotEmpty
-        ? '> Referring to:\n> ${quote.replaceAll('\n', '\n> ')}\n\n$text'
-        : text;
-    _ctrl.sendMessage(messageText);
+    _ctrl.sendMessage(text);
     _textController.clear();
-    setState(() => _quotedText = null);
-  }
-
-  void _onQuote(String text) {
-    setState(() => _quotedText = text);
-    _focusNode.requestFocus();
   }
 
   Future<void> _onAttach() async {
@@ -245,7 +231,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       onEdit: _showEditDialog,
                       onFork: _forkChat,
                       onRetry: _retryMessage,
-                      onQuote: _onQuote,
                       isGenerating: _ctrl.isGenerating,
                     );
                   },
@@ -277,11 +262,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _McpToolsStatus(controller: _ctrl),
-                  if (_quotedText != null)
-                    _QuotePreview(
-                      text: _quotedText!,
-                      onDismiss: () => setState(() => _quotedText = null),
-                    ),
                   _ChatInputBar(
                     textController: _textController,
                     focusNode: _focusNode,
@@ -869,7 +849,6 @@ class _MessageBubble extends StatefulWidget {
   final ValueChanged<ChatMessage> onEdit;
   final ValueChanged<String> onFork;
   final ValueChanged<String> onRetry;
-  final ValueChanged<String> onQuote;
   final bool isGenerating;
 
   const _MessageBubble({
@@ -878,7 +857,6 @@ class _MessageBubble extends StatefulWidget {
     required this.onEdit,
     required this.onFork,
     required this.onRetry,
-    required this.onQuote,
     required this.isGenerating,
   });
 
@@ -1006,10 +984,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         ).textTheme.bodyMedium?.copyWith(color: contentColor),
                       )
                     else
-                      _SelectableAssistantMarkdown(
+                      _AssistantMarkdown(
                         content: widget.message.content,
                         contentColor: contentColor,
-                        onQuote: widget.onQuote,
                       ),
                   ] else if (!widget.message.isStreaming &&
                       widget.message.toolCalls.isEmpty)
@@ -1412,166 +1389,6 @@ class _MathSegment {
   final _SegmentType type;
   final String text;
   _MathSegment(this.type, this.text);
-}
-
-/// Wraps assistant markdown in a SelectionArea with a "Quote" context menu action.
-class _SelectableAssistantMarkdown extends StatefulWidget {
-  final String content;
-  final Color contentColor;
-  final ValueChanged<String> onQuote;
-
-  const _SelectableAssistantMarkdown({
-    required this.content,
-    required this.contentColor,
-    required this.onQuote,
-  });
-
-  @override
-  State<_SelectableAssistantMarkdown> createState() =>
-      _SelectableAssistantMarkdownState();
-}
-
-class _SelectableAssistantMarkdownState
-    extends State<_SelectableAssistantMarkdown> {
-  String _selectedText = '';
-  OverlayEntry? _quoteOverlay;
-  Offset _pointerUpGlobal = Offset.zero;
-
-  @override
-  void dispose() {
-    _removeOverlay();
-    super.dispose();
-  }
-
-  void _removeOverlay() {
-    _quoteOverlay?.remove();
-    _quoteOverlay = null;
-  }
-
-  void _showOverlay() {
-    _removeOverlay();
-    if (_selectedText.isEmpty) return;
-
-    final overlay = Overlay.of(context);
-    final screenSize = MediaQuery.of(context).size;
-
-    // Button size estimate for clamping.
-    const btnWidth = 86.0;
-    const btnHeight = 30.0;
-    const gap = 8.0;
-
-    // Position above the pointer-up point, clamped to screen edges.
-    final left = _pointerUpGlobal.dx.clamp(8.0, screenSize.width - btnWidth - 8);
-    final top = (_pointerUpGlobal.dy - btnHeight - gap).clamp(8.0, screenSize.height - btnHeight - 8);
-
-    _quoteOverlay = OverlayEntry(
-      builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        return Positioned(
-          left: left,
-          top: top,
-          child: TapRegion(
-            onTapOutside: (_) => _removeOverlay(),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  if (_selectedText.isNotEmpty) {
-                    widget.onQuote(_selectedText);
-                  }
-                  _removeOverlay();
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cs.shadow.withValues(alpha: 0.3),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.format_quote_rounded,
-                        size: 14,
-                        color: cs.onPrimary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Quote',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelSmall
-                            ?.copyWith(
-                              color: cs.onPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    overlay.insert(_quoteOverlay!);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerUp: (event) {
-        _pointerUpGlobal = event.position;
-      },
-      child: SelectionArea(
-        onSelectionChanged: (content) {
-          final text = content?.plainText ?? '';
-          _selectedText = text;
-          if (text.isNotEmpty) {
-            // Show overlay on next frame so pointer-up position is captured.
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (_selectedText.isNotEmpty && mounted) _showOverlay();
-            });
-          } else {
-            _removeOverlay();
-          }
-        },
-        contextMenuBuilder: (context, selectableRegionState) {
-          return AdaptiveTextSelectionToolbar.buttonItems(
-            anchors: selectableRegionState.contextMenuAnchors,
-            buttonItems: [
-              ...selectableRegionState.contextMenuButtonItems,
-              ContextMenuButtonItem(
-                label: 'Quote',
-                onPressed: () {
-                  if (_selectedText.isNotEmpty) {
-                    widget.onQuote(_selectedText);
-                  }
-                  selectableRegionState.hideToolbar();
-                },
-              ),
-            ],
-          );
-        },
-        child: _AssistantMarkdown(
-          content: widget.content,
-          contentColor: widget.contentColor,
-        ),
-      ),
-    );
-  }
 }
 
 /// Custom code block builder with syntax highlighting, language label, and copy button.
@@ -2381,66 +2198,6 @@ class _McpToolsStatusState extends State<_McpToolsStatus> {
             ),
           ),
       ],
-    );
-  }
-}
-
-// ── Quote Preview ───────────────────────────────────────────────────────────
-
-class _QuotePreview extends StatelessWidget {
-  final String text;
-  final VoidCallback onDismiss;
-
-  const _QuotePreview({required this.text, required this.onDismiss});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // Truncate for display — full text is sent with the message.
-    final displayText = text.length > 120
-        ? '${text.substring(0, 120)}...'
-        : text;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.primaryContainer.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(12),
-          border: Border(
-            left: BorderSide(color: cs.primary, width: 3),
-          ),
-        ),
-        padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
-        child: Row(
-          children: [
-            Icon(Icons.format_quote_rounded, size: 16, color: cs.primary),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                displayText.replaceAll('\n', ' '),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onPrimaryContainer,
-                  fontStyle: FontStyle.italic,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            SizedBox(
-              width: 28,
-              height: 28,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 16,
-                icon: Icon(Icons.close, color: cs.onPrimaryContainer),
-                onPressed: onDismiss,
-                tooltip: 'Remove quote',
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

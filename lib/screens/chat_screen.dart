@@ -1434,67 +1434,52 @@ class _SelectableAssistantMarkdown extends StatefulWidget {
 class _SelectableAssistantMarkdownState
     extends State<_SelectableAssistantMarkdown> {
   String _selectedText = '';
-  bool _hasSelection = false;
+  OverlayEntry? _quoteOverlay;
+  Offset _pointerUpGlobal = Offset.zero;
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SelectionArea(
-          onSelectionChanged: (content) {
-            final text = content?.plainText ?? '';
-            final selected = text.isNotEmpty;
-            if (selected != _hasSelection) {
-              setState(() {
-                _selectedText = text;
-                _hasSelection = selected;
-              });
-            } else {
-              _selectedText = text;
-            }
-          },
-          contextMenuBuilder: (context, selectableRegionState) {
-            return AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: selectableRegionState.contextMenuAnchors,
-              buttonItems: [
-                ...selectableRegionState.contextMenuButtonItems,
-                ContextMenuButtonItem(
-                  label: 'Quote',
-                  onPressed: () {
-                    if (_selectedText.isNotEmpty) {
-                      widget.onQuote(_selectedText);
-                    }
-                    selectableRegionState.hideToolbar();
-                  },
-                ),
-              ],
-            );
-          },
-          child: _AssistantMarkdown(
-            content: widget.content,
-            contentColor: widget.contentColor,
-          ),
-        ),
+  void _removeOverlay() {
+    _quoteOverlay?.remove();
+    _quoteOverlay = null;
+  }
 
-        // Quote button — appears below content when text is selected.
-        if (_hasSelection)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
+  void _showOverlay() {
+    _removeOverlay();
+    if (_selectedText.isEmpty) return;
+
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.of(context).size;
+
+    // Button size estimate for clamping.
+    const btnWidth = 86.0;
+    const btnHeight = 30.0;
+    const gap = 8.0;
+
+    // Position above the pointer-up point, clamped to screen edges.
+    final left = _pointerUpGlobal.dx.clamp(8.0, screenSize.width - btnWidth - 8);
+    final top = (_pointerUpGlobal.dy - btnHeight - gap).clamp(8.0, screenSize.height - btnHeight - 8);
+
+    _quoteOverlay = OverlayEntry(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Positioned(
+          left: left,
+          top: top,
+          child: TapRegion(
+            onTapOutside: (_) => _removeOverlay(),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
                 onTap: () {
                   if (_selectedText.isNotEmpty) {
                     widget.onQuote(_selectedText);
-                    setState(() {
-                      _hasSelection = false;
-                      _selectedText = '';
-                    });
                   }
+                  _removeOverlay();
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
@@ -1507,9 +1492,9 @@ class _SelectableAssistantMarkdownState
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: cs.shadow.withValues(alpha: 0.2),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
+                        color: cs.shadow.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -1538,7 +1523,53 @@ class _SelectableAssistantMarkdownState
               ),
             ),
           ),
-      ],
+        );
+      },
+    );
+    overlay.insert(_quoteOverlay!);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerUp: (event) {
+        _pointerUpGlobal = event.position;
+      },
+      child: SelectionArea(
+        onSelectionChanged: (content) {
+          final text = content?.plainText ?? '';
+          _selectedText = text;
+          if (text.isNotEmpty) {
+            // Show overlay on next frame so pointer-up position is captured.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_selectedText.isNotEmpty && mounted) _showOverlay();
+            });
+          } else {
+            _removeOverlay();
+          }
+        },
+        contextMenuBuilder: (context, selectableRegionState) {
+          return AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: selectableRegionState.contextMenuAnchors,
+            buttonItems: [
+              ...selectableRegionState.contextMenuButtonItems,
+              ContextMenuButtonItem(
+                label: 'Quote',
+                onPressed: () {
+                  if (_selectedText.isNotEmpty) {
+                    widget.onQuote(_selectedText);
+                  }
+                  selectableRegionState.hideToolbar();
+                },
+              ),
+            ],
+          );
+        },
+        child: _AssistantMarkdown(
+          content: widget.content,
+          contentColor: widget.contentColor,
+        ),
+      ),
     );
   }
 }

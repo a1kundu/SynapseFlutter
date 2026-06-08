@@ -1822,14 +1822,10 @@ class _ToolCallTileState extends State<_ToolCallTile> {
         children: [
           // Header row (tap to expand or open sub-agent dialog)
           InkWell(
-            onTap: widget.isSubAgent && hasResult
+            onTap: widget.isSubAgent && widget.onSubAgentTap != null
                 ? () {
-                    // Open the sub-agent activity dialog
-                    if (widget.onSubAgentTap != null) {
-                      widget.onSubAgentTap!(widget.entry.id);
-                    } else {
-                      setState(() => _expanded = !_expanded);
-                    }
+                    // Open the sub-agent activity dialog (works even while running)
+                    widget.onSubAgentTap!(widget.entry.id);
                   }
                 : hasResult
                     ? () => setState(() => _expanded = !_expanded)
@@ -1878,7 +1874,7 @@ class _ToolCallTileState extends State<_ToolCallTile> {
                       ],
                     ),
                   ),
-                  if (hasResult) ...[
+                  if (hasResult || (widget.isSubAgent && widget.onSubAgentTap != null)) ...[
                     const SizedBox(width: 4),
                     Icon(
                       widget.isSubAgent && widget.onSubAgentTap != null

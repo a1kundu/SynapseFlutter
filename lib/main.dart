@@ -1,6 +1,7 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/background_update.dart';
 import 'services/chat_controller.dart';
@@ -31,8 +32,64 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  static const _shortcutChannel =
+      MethodChannel('in.arijitk.synapse_flutter/shortcuts');
+
+  @override
+  void initState() {
+    super.initState();
+    _shortcutChannel.setMethodCallHandler(_handleShortcut);
+  }
+
+  Future<dynamic> _handleShortcut(MethodCall call) async {
+    if (call.method != 'shortcutAction') return;
+    final action = call.arguments as String?;
+    // Wait briefly so the navigator is ready after a cold start.
+    await Future.delayed(const Duration(milliseconds: 400));
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    switch (action) {
+      case 'check_update':
+        _triggerUpdateCheck(ctx);
+        break;
+      case 'open_settings':
+        navigatorKey.currentState?.pushNamed('/settings');
+        break;
+    }
+  }
+
+  void _triggerUpdateCheck(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+
+    final update = await UpdateService.checkForUpdate();
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
+
+    if (update != null) {
+      showUpdateDialog(context, update);
+    } else {
+      showRootSnackBar(
+        const SnackBar(content: Text('You\'re already on the latest version.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

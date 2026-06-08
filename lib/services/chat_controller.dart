@@ -12,7 +12,6 @@ import 'lua_executor.dart';
 import 'mcp_client.dart';
 import 'notification_service.dart';
 import 'rest_client_service.dart';
-import 'google_search_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
 
@@ -229,41 +228,6 @@ class ChatController extends ChangeNotifier {
               'type': 'integer',
               'description':
                   'Maximum number of results to return (1-10). Defaults to 5.',
-            },
-          },
-          'required': ['query'],
-        },
-      ),
-      isSystemTool: true,
-    ),
-    McpServerTool(
-      serverName: _systemToolServerName,
-      tool: McpTool(
-        name: 'google_search',
-        description:
-            'Search Google via google.com/search and return top results. '
-            'Returns titles, URLs, and snippets. Use this when you need '
-            'Google-specific results, or when DuckDuckGo (web_search) '
-            'doesn\'t return satisfactory results. '
-            'Note: Google may occasionally rate-limit or show CAPTCHAs; '
-            'if that happens, fall back to web_search.',
-        inputSchema: {
-          'type': 'object',
-          'properties': {
-            'query': {
-              'type': 'string',
-              'description': 'The search query.',
-            },
-            'max_results': {
-              'type': 'integer',
-              'description':
-                  'Maximum number of results to return (1-10). Defaults to 5.',
-            },
-            'language': {
-              'type': 'string',
-              'description':
-                  'Language code for results (e.g. "en", "es", "fr"). '
-                  'Defaults to "en".',
             },
           },
           'required': ['query'],
@@ -1278,18 +1242,6 @@ class ChatController extends ChangeNotifier {
         }
         final maxResults = (args['max_results'] as int?) ?? 5;
         return await WebSearchService.search(query, maxResults: maxResults);
-      case 'google_search':
-        final query = args['query'] as String? ?? '';
-        if (query.trim().isEmpty) {
-          return 'Error: Search query is required.';
-        }
-        final maxResults = (args['max_results'] as int?) ?? 5;
-        final language = (args['language'] as String?) ?? 'en';
-        return await GoogleSearchService.search(
-          query,
-          maxResults: maxResults,
-          language: language,
-        );
       case 'rest_request':
         final url = args['url'] as String? ?? '';
         if (url.trim().isEmpty) {

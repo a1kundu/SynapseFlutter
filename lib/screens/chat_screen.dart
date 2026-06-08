@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:highlight/highlight.dart' show highlight;
@@ -1130,13 +1131,157 @@ class _AssistantMarkdown extends StatelessWidget {
 
   const _AssistantMarkdown({required this.content, required this.contentColor});
 
+  /// Regex for block math: $$...$$ or \[...\]
+  static final _blockMathPattern = RegExp(
+    r'\$\$([\s\S]*?)\$\$'
+    r'|\\\[([\s\S]*?)\\\]',
+    multiLine: true,
+  );
+
+  /// Regex for inline math: $...$ or \(...\)
+  static final _inlineMathPattern = RegExp(
+    r'\$([^\$\n]+?)\$'
+    r'|\\\((.+?)\\\)',
+  );
+
+  /// Check if text contains any math expressions.
+  static bool _hasMath(String text) =>
+      _blockMathPattern.hasMatch(text) || _inlineMathPattern.hasMatch(text);
+
   @override
   Widget build(BuildContext context) {
+    // Fast path: no math at all.
+    if (!_hasMath(content)) {
+      return _buildMarkdown(context, content);
+    }
+
+    // Split on block math boundaries into segments.
+    final segments = <_MathSegment>[];
+    var lastEnd = 0;
+    for (final match in _blockMathPattern.allMatches(content)) {
+      if (match.start > lastEnd) {
+        segments.add(_MathSegment(
+          _SegmentType.markdown,
+          content.substring(lastEnd, match.start),
+        ));
+      }
+      final tex = (match.group(1) ?? match.group(2))!.trim();
+      segments.add(_MathSegment(_SegmentType.mathBlock, tex));
+      lastEnd = match.end;
+    }
+    if (lastEnd < content.length) {
+      segments.add(_MathSegment(
+        _SegmentType.markdown,
+        content.substring(lastEnd),
+      ));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: segments.map((seg) {
+        if (seg.type == _SegmentType.mathBlock) {
+          return _buildBlockMath(context, seg.text);
+        }
+        // Markdown segment — may contain inline math.
+        if (seg.text.trim().isEmpty) return const SizedBox.shrink();
+        if (_inlineMathPattern.hasMatch(seg.text)) {
+          return _buildMixedContent(context, seg.text);
+        }
+        return _buildMarkdown(context, seg.text);
+      }).toList(),
+    );
+  }
+
+  /// Build mixed content: split text into lines, render lines with inline math
+  /// using Text.rich, and lines without inline math using MarkdownBody.
+  Widget _buildMixedContent(BuildContext context, String text) {
+    // Split into paragraphs separated by blank lines.
+    // For each paragraph, check if it contains inline math.
+    // If yes → render with Text.rich. If no → render as markdown.
+    final lines = text.split('\n');
+    final widgets = <Widget>[];
+    final mdBuffer = StringBuffer();
+
+    void flushMarkdown() {
+      final md = mdBuffer.toString();
+      mdBuffer.clear();
+      if (md.trim().isNotEmpty) {
+        widgets.add(_buildMarkdown(context, md));
+      }
+    }
+
+    for (final line in lines) {
+      if (_inlineMathPattern.hasMatch(line)) {
+        flushMarkdown();
+        widgets.add(_buildInlineMathLine(context, line));
+      } else {
+        mdBuffer.writeln(line);
+      }
+    }
+    flushMarkdown();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: widgets,
+    );
+  }
+
+  /// Render a single line that contains inline math as Text.rich with WidgetSpans.
+  Widget _buildInlineMathLine(BuildContext context, String line) {
+    final cs = Theme.of(context).colorScheme;
+    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      color: contentColor,
+    );
+
+    final children = <InlineSpan>[];
+    var lastEnd = 0;
+
+    for (final match in _inlineMathPattern.allMatches(line)) {
+      if (match.start > lastEnd) {
+        children.add(TextSpan(
+          text: line.substring(lastEnd, match.start),
+          style: textStyle,
+        ));
+      }
+      final tex = (match.group(1) ?? match.group(2))!.trim();
+      children.add(WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Math.tex(
+          tex,
+          textStyle: TextStyle(fontSize: 14, color: contentColor),
+          onErrorFallback: (e) => Text(
+            '\$$tex\$',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: cs.error,
+            ),
+          ),
+        ),
+      ));
+      lastEnd = match.end;
+    }
+    if (lastEnd < line.length) {
+      children.add(TextSpan(
+        text: line.substring(lastEnd),
+        style: textStyle,
+      ));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text.rich(TextSpan(children: children)),
+    );
+  }
+
+  Widget _buildMarkdown(BuildContext context, String data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
 
     return MarkdownBody(
-      data: content,
+      data: data,
       selectable: false,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
@@ -1224,6 +1369,49 @@ class _AssistantMarkdown extends StatelessWidget {
       },
     );
   }
+
+  /// Render a block-level math expression (centered, horizontally scrollable).
+  Widget _buildBlockMath(BuildContext context, String tex) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? cs.surfaceContainerHighest.withValues(alpha: 0.5)
+              : cs.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            tex,
+            textStyle: TextStyle(fontSize: 16, color: contentColor),
+            onErrorFallback: (e) => Text(
+              tex,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: cs.error,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _SegmentType { markdown, mathBlock }
+
+class _MathSegment {
+  final _SegmentType type;
+  final String text;
+  _MathSegment(this.type, this.text);
 }
 
 /// Wraps assistant markdown in a SelectionArea with a "Quote" context menu action.

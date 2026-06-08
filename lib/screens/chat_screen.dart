@@ -1247,97 +1247,121 @@ class _SelectableAssistantMarkdownState
     extends State<_SelectableAssistantMarkdown> {
   String _selectedText = '';
   bool _hasSelection = false;
+  // Track where the pointer was released to position the Quote button nearby.
+  Offset? _pointerUpLocal;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SelectionArea(
-          onSelectionChanged: (content) {
-            final text = content?.plainText ?? '';
-            final selected = text.isNotEmpty;
-            if (selected != _hasSelection) {
-              setState(() {
+    return Listener(
+      onPointerUp: (event) {
+        // Convert global pointer position to local coordinates within this widget.
+        final renderBox = context.findRenderObject() as RenderBox?;
+        if (renderBox != null) {
+          _pointerUpLocal = renderBox.globalToLocal(event.position);
+        }
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          SelectionArea(
+            onSelectionChanged: (content) {
+              final text = content?.plainText ?? '';
+              final selected = text.isNotEmpty;
+              if (selected != _hasSelection) {
+                setState(() {
+                  _selectedText = text;
+                  _hasSelection = selected;
+                });
+              } else {
                 _selectedText = text;
-                _hasSelection = selected;
-              });
-            } else {
-              _selectedText = text;
-            }
-          },
-          contextMenuBuilder: (context, selectableRegionState) {
-            return AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: selectableRegionState.contextMenuAnchors,
-              buttonItems: [
-                ...selectableRegionState.contextMenuButtonItems,
-                ContextMenuButtonItem(
-                  label: 'Quote',
-                  onPressed: () {
+              }
+            },
+            contextMenuBuilder: (context, selectableRegionState) {
+              return AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: selectableRegionState.contextMenuAnchors,
+                buttonItems: [
+                  ...selectableRegionState.contextMenuButtonItems,
+                  ContextMenuButtonItem(
+                    label: 'Quote',
+                    onPressed: () {
+                      if (_selectedText.isNotEmpty) {
+                        widget.onQuote(_selectedText);
+                      }
+                      selectableRegionState.hideToolbar();
+                    },
+                  ),
+                ],
+              );
+            },
+            child: _AssistantMarkdown(
+              content: widget.content,
+              contentColor: widget.contentColor,
+            ),
+          ),
+
+          // Quote button positioned near where the selection ended.
+          if (_hasSelection && _pointerUpLocal != null)
+            Positioned(
+              left: _pointerUpLocal!.dx.clamp(0, double.infinity),
+              top: _pointerUpLocal!.dy + 4,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
                     if (_selectedText.isNotEmpty) {
                       widget.onQuote(_selectedText);
+                      setState(() {
+                        _hasSelection = false;
+                        _selectedText = '';
+                      });
                     }
-                    selectableRegionState.hideToolbar();
                   },
-                ),
-              ],
-            );
-          },
-          child: _AssistantMarkdown(
-            content: widget.content,
-            contentColor: widget.contentColor,
-          ),
-        ),
-
-        // Floating Quote button — appears when text is selected.
-        if (_hasSelection)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: InkWell(
-              onTap: () {
-                if (_selectedText.isNotEmpty) {
-                  widget.onQuote(_selectedText);
-                  setState(() {
-                    _hasSelection = false;
-                    _selectedText = '';
-                  });
-                }
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: cs.primary.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.format_quote_rounded,
-                      size: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
                       color: cs.primary,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cs.shadow.withValues(alpha: 0.25),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Quote selection',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: cs.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.format_quote_rounded,
+                          size: 14,
+                          color: cs.onPrimary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Quote',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                color: cs.onPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

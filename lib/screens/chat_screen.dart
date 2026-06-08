@@ -129,8 +129,16 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     // Otherwise, show completed activity as static replay
-    final activity = _ctrl.completedSubAgentActivities[toolCallId];
-    if (activity == null) return;
+    var activity = _ctrl.completedSubAgentActivities[toolCallId];
+
+    // If not in the in-memory map (e.g. after app restart), reconstruct
+    // from the persisted ToolCallEntry data so the dialog still works.
+    if (activity == null) {
+      activity = _reconstructSubAgentActivity(toolCallId);
+      if (activity == null) return;
+      // Cache so subsequent taps are instant
+      _ctrl.completedSubAgentActivities[toolCallId] = activity;
+    }
 
     showDialog(
       context: context,
@@ -141,6 +149,46 @@ class _ChatScreenState extends State<ChatScreen> {
         onDismiss: () => Navigator.of(dialogContext).pop(),
       ),
     );
+  }
+
+  /// Reconstruct a [SubAgentActivity] from a persisted [ToolCallEntry].
+  ///
+  /// After an app restart `completedSubAgentActivities` is empty, but
+  /// [ChatMessage.toolCalls] are persisted. We can extract the agent name,
+  /// task, and final result from the `delegate_to_agent` call's arguments
+  /// and result to build a static replay activity.
+  SubAgentActivity? _reconstructSubAgentActivity(String toolCallId) {
+    for (final msg in _ctrl.messages) {
+      for (final entry in msg.toolCalls) {
+        if (entry.id == toolCallId && entry.toolName == 'delegate_to_agent') {
+          try {
+            final args =
+                json.decode(entry.arguments) as Map<String, dynamic>;
+            final agentName = args['agent'] as String? ?? 'unknown';
+            final task = args['task'] as String? ?? '';
+
+            // Strip the "[Sub-agent: …]\n\n" prefix from the result if present
+            var resultContent = entry.result;
+            final prefixPattern = RegExp(r'^\[Sub-agent: [^\]]+\]\n\n');
+            resultContent = resultContent.replaceFirst(prefixPattern, '');
+
+            return SubAgentActivity(
+              agentName: agentName,
+              agentRole: '',
+              taskDescription: task,
+              toolCallId: toolCallId,
+              streamingContent: resultContent,
+              isRunning: false,
+              isComplete: true,
+              error: entry.status == ToolCallStatus.error ? resultContent : null,
+            );
+          } catch (_) {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   void _onControllerChanged() {

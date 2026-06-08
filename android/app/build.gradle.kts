@@ -13,6 +13,9 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// PR-specific build: set PR_NUMBER env var in CI to produce a PR-scoped APK
+val prNumber: String? = System.getenv("PR_NUMBER")
+
 android {
     namespace = "in.arijitk.synapse_flutter"
     compileSdk = flutter.compileSdkVersion
@@ -25,14 +28,14 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "in.arijitk.synapse_flutter"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        manifestPlaceholders["appLabel"] =
+            if (prNumber != null) "Synapse PR#$prNumber" else "Synapse"
     }
 
     signingConfigs {
@@ -46,6 +49,9 @@ android {
 
     buildTypes {
         release {
+            if (prNumber != null) {
+                applicationIdSuffix = ".pr$prNumber"
+            }
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {

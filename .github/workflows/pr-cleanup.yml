@@ -1,0 +1,46 @@
+name: PR Cleanup (Delete PR Releases)
+
+on:
+  pull_request:
+    branches: [master]
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Delete all releases for PR #${{ github.event.pull_request.number }}
+        run: |
+          echo "Cleaning up releases for PR #${PR_NUMBER}..."
+
+          # List all releases whose tag matches v*-pr<number>-*
+          TAGS=$(gh release list \
+            --repo "${{ github.repository }}" \
+            --limit 100 \
+            --json tagName \
+            --jq ".[].tagName | select(test(\"^v[0-9]+-pr${PR_NUMBER}-\"))")
+
+          if [ -z "$TAGS" ]; then
+            echo "No PR releases found for PR #${PR_NUMBER}."
+            exit 0
+          fi
+
+          echo "Found releases to delete:"
+          echo "$TAGS"
+
+          for TAG in $TAGS; do
+            echo "Deleting release $TAG ..."
+            gh release delete "$TAG" \
+              --repo "${{ github.repository }}" \
+              --cleanup-tag \
+              --yes
+          done
+
+          echo "Cleanup complete for PR #${PR_NUMBER}."

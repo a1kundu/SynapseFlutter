@@ -46,7 +46,13 @@ class UpdateService {
   static const repoUrl = 'https://github.com/$owner/$repo';
   static const _autoUpdateKey = 'autoUpdateCheck';
 
-  static String get channel => kDebugMode ? 'debug' : 'release';
+  static const _prNumber =
+      String.fromEnvironment('PR_NUMBER', defaultValue: '');
+
+  static String get channel {
+    if (_prNumber.isNotEmpty) return 'pr$_prNumber';
+    return kDebugMode ? 'debug' : 'release';
+  }
 
   static Future<bool> isAutoUpdateEnabled() async {
     final prefs = await SharedPreferences.getInstance();

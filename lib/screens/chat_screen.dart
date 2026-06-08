@@ -1643,17 +1643,24 @@ class _ToolCallSteps extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: toolCalls.map((entry) {
+        final isSubAgent = entry.toolName == 'delegate_to_agent';
         final IconData icon;
         final Color iconColor;
         switch (entry.status) {
           case ToolCallStatus.running:
-            icon = Icons.hourglass_top_rounded;
-            iconColor = cs.tertiary;
+            icon = isSubAgent
+                ? Icons.smart_toy_outlined
+                : Icons.hourglass_top_rounded;
+            iconColor = isSubAgent ? cs.primary : cs.tertiary;
           case ToolCallStatus.completed:
-            icon = Icons.check_circle_outline_rounded;
+            icon = isSubAgent
+                ? Icons.smart_toy_rounded
+                : Icons.check_circle_outline_rounded;
             iconColor = Colors.green;
           case ToolCallStatus.error:
-            icon = Icons.error_outline_rounded;
+            icon = isSubAgent
+                ? Icons.smart_toy_outlined
+                : Icons.error_outline_rounded;
             iconColor = cs.error;
         }
         return _ToolCallTile(
@@ -1661,6 +1668,7 @@ class _ToolCallSteps extends StatelessWidget {
           icon: icon,
           iconColor: iconColor,
           contentColor: contentColor,
+          isSubAgent: isSubAgent,
         );
       }).toList(),
     );
@@ -1672,12 +1680,14 @@ class _ToolCallTile extends StatefulWidget {
   final IconData icon;
   final Color iconColor;
   final Color contentColor;
+  final bool isSubAgent;
 
   const _ToolCallTile({
     required this.entry,
     required this.icon,
     required this.iconColor,
     required this.contentColor,
+    this.isSubAgent = false,
   });
 
   @override
@@ -1691,6 +1701,22 @@ class _ToolCallTileState extends State<_ToolCallTile> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final hasResult = widget.entry.result.isNotEmpty;
+
+    // For sub-agent calls, extract the agent name from arguments for display
+    String displayName = widget.entry.toolName;
+    String? subAgentTask;
+    if (widget.isSubAgent) {
+      try {
+        final args = json.decode(widget.entry.arguments) as Map<String, dynamic>;
+        final agentName = args['agent'] as String? ?? '';
+        subAgentTask = args['task'] as String?;
+        if (agentName.isNotEmpty) {
+          displayName = 'Agent: ${agentName[0].toUpperCase()}${agentName.substring(1)}';
+        }
+      } catch (_) {
+        displayName = 'Sub-agent';
+      }
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -1706,10 +1732,14 @@ class _ToolCallTileState extends State<_ToolCallTile> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: widget.contentColor.withValues(alpha: 0.06),
+                color: widget.isSubAgent
+                    ? cs.primaryContainer.withValues(alpha: 0.25)
+                    : widget.contentColor.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: cs.outlineVariant.withValues(alpha: 0.3),
+                  color: widget.isSubAgent
+                      ? cs.primary.withValues(alpha: 0.3)
+                      : cs.outlineVariant.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -1718,13 +1748,28 @@ class _ToolCallTileState extends State<_ToolCallTile> {
                   Icon(widget.icon, size: 16, color: widget.iconColor),
                   const SizedBox(width: 6),
                   Flexible(
-                    child: Text(
-                      widget.entry.toolName,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: widget.contentColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: widget.contentColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (widget.isSubAgent && subAgentTask != null && subAgentTask.isNotEmpty)
+                          Text(
+                            subAgentTask,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: widget.contentColor.withValues(alpha: 0.6),
+                              fontSize: 11,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                     ),
                   ),
                   if (hasResult) ...[

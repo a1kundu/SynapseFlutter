@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_check_update_short">Check Update</string>
+    <string name="shortcut_check_update_long">Check for App Updates</string>
+    <string name="shortcut_open_settings_short">Settings</string>
+    <string name="shortcut_open_settings_long">Open Settings</string>
+</resources>

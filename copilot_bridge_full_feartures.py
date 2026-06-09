@@ -447,7 +447,7 @@ class CopilotProxy:
             data = json.loads(resp_body)
             raw_models = data.get("data", [])
 
-            # Normalize to OpenAI-compatible format
+            # Normalize to enriched format with full Copilot capabilities
             models = []
             for m in raw_models:
                 model_entry = {
@@ -459,21 +459,70 @@ class CopilotProxy:
                 # Preserve useful extra fields
                 if "name" in m:
                     model_entry["name"] = m["name"]
+                if "version" in m:
+                    model_entry["version"] = m["version"]
+                if m.get("preview"):
+                    model_entry["preview"] = True
+
+                # Model picker metadata (for UI grouping)
+                if "model_picker_enabled" in m:
+                    model_entry["model_picker_enabled"] = m["model_picker_enabled"]
+                if "model_picker_category" in m:
+                    model_entry["model_picker_category"] = m["model_picker_category"]
+
                 if "capabilities" in m:
                     caps = m["capabilities"]
                     limits = caps.get("limits", {})
                     supports = caps.get("supports", {})
-                    model_entry["capabilities"] = {
+
+                    cap_entry = {
                         "type": caps.get("type", "chat"),
                         "family": caps.get("family", m.get("id", "")),
+                        "tokenizer": caps.get("tokenizer"),
+                        # Token limits
                         "max_context_window_tokens": limits.get("max_context_window_tokens"),
                         "max_output_tokens": limits.get("max_output_tokens"),
+                        "max_prompt_tokens": limits.get("max_prompt_tokens"),
+                        # Feature support flags
                         "supports_streaming": supports.get("streaming", False),
                         "supports_tool_calls": supports.get("tool_calls", False),
+                        "supports_parallel_tool_calls": supports.get("parallel_tool_calls", False),
                         "supports_vision": supports.get("vision", False),
+                        "supports_structured_outputs": supports.get("structured_outputs", False),
                     }
-                if m.get("preview"):
-                    model_entry["preview"] = True
+
+                    # Vision limits
+                    vision_limits = limits.get("vision")
+                    if vision_limits:
+                        cap_entry["vision"] = {
+                            "max_prompt_images": vision_limits.get("max_prompt_images"),
+                            "max_prompt_image_size": vision_limits.get("max_prompt_image_size"),
+                            "supported_media_types": vision_limits.get("supported_media_types", []),
+                        }
+
+                    # Thinking / reasoning capabilities
+                    if supports.get("adaptive_thinking") or "min_thinking_budget" in supports:
+                        thinking = {}
+                        if "adaptive_thinking" in supports:
+                            thinking["adaptive"] = supports["adaptive_thinking"]
+                        if "min_thinking_budget" in supports:
+                            thinking["min_budget_tokens"] = supports["min_thinking_budget"]
+                        if "max_thinking_budget" in supports:
+                            thinking["max_budget_tokens"] = supports["max_thinking_budget"]
+                        cap_entry["thinking"] = thinking
+
+                    # Reasoning effort levels (GPT-5.x, Gemini)
+                    if "reasoning_effort" in supports:
+                        cap_entry["reasoning_effort_levels"] = supports["reasoning_effort"]
+
+                    model_entry["capabilities"] = cap_entry
+
+                # Policy info
+                if "policy" in m:
+                    model_entry["policy"] = {
+                        "state": m["policy"].get("state"),
+                    }
+
                 models.append(model_entry)
 
             self._models_cache = models
@@ -665,6 +714,18 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
         self._set_cors_headers()
         self.end_headers()
 
+    def _parse_query_params(self) -> dict:
+        """Parse query string into a dict of param -> value."""
+        qs = ""
+        if "?" in self.path:
+            qs = self.path.split("?", 1)[1]
+        params = {}
+        for part in qs.split("&"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                params[urllib.parse.unquote(k)] = urllib.parse.unquote(v)
+        return params
+
     def do_GET(self):
         path = self.path.split("?")[0].rstrip("/")  # strip query params
 
@@ -690,18 +751,67 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
     # -- Endpoint implementations ---------------------------------------------
 
     def _handle_health(self):
-        self._send_json(200, {"status": "ok", "service": "copilot-bridge"})
+        self._send_json(200, {
+            "status": "ok",
+            "features": [
+                "chat_completions",
+                "streaming",
+                "tool_calls",
+                "thinking",
+                "reasoning_effort",
+                "vision",
+                "embeddings",
+                "model_discovery",
+            ],
+        })
 
     def _handle_models(self):
+        """GET /v1/models — list models with optional query param filters.
+
+        Query params:
+          ?category=powerful|versatile|lightweight  — filter by picker category
+          ?picker=true                              — only model_picker_enabled models
+          ?thinking=true                            — only models with thinking support
+          ?vision=true                              — only models with vision support
+          ?all=true                                 — include embeddings & non-chat models
+        """
         try:
             models = self.proxy.fetch_models()
-            # Filter: only return chat-capable models by default
-            chat_models = [
-                m for m in models
-                if not m["id"].startswith("text-embedding")
-                and m.get("capabilities", {}).get("type", "chat") == "chat"
-            ]
-            self._send_json(200, {"object": "list", "data": chat_models})
+            params = self._parse_query_params()
+
+            # Default: exclude embeddings and non-chat unless ?all=true
+            if params.get("all") != "true":
+                models = [
+                    m for m in models
+                    if not m["id"].startswith("text-embedding")
+                    and m.get("capabilities", {}).get("type", "chat") == "chat"
+                ]
+
+            # Filter by model_picker_category
+            category = params.get("category")
+            if category:
+                models = [m for m in models if m.get("model_picker_category") == category]
+
+            # Filter by model_picker_enabled
+            if params.get("picker") == "true":
+                models = [m for m in models if m.get("model_picker_enabled")]
+
+            # Filter by thinking support
+            if params.get("thinking") == "true":
+                models = [
+                    m for m in models
+                    if m.get("capabilities", {}).get("thinking")
+                    or m.get("capabilities", {}).get("reasoning_effort_levels")
+                ]
+
+            # Filter by vision support
+            if params.get("vision") == "true":
+                models = [
+                    m for m in models
+                    if m.get("capabilities", {}).get("supports_vision")
+                ]
+
+            self._send_json(200, {"object": "list", "data": models})
         except Exception as e:
             log.exception("Failed to fetch models")
             self._send_error_json(502, f"Failed to fetch models: {e}", "upstream_error")
@@ -776,11 +886,21 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         is_stream = payload.get("stream", False)
 
+        # Log thinking/reasoning params if present
+        extras = []
+        if "thinking" in payload:
+            budget = payload["thinking"].get("budget_tokens", "?")
+            extras.append(f"thinking={budget}")
+        if "reasoning_effort" in payload:
+            extras.append(f"reasoning_effort={payload['reasoning_effort']}")
+        extra_str = f" {' '.join(extras)}" if extras else ""
+
         log.info(
-            "Chat request: model=%s stream=%s messages=%d",
+            "Chat request: model=%s stream=%s messages=%d%s",
             payload.get("model"),
             is_stream,
             len(payload.get("messages", [])),
+            extra_str,
         )
 
         try:

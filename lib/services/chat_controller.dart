@@ -1019,17 +1019,24 @@ class ChatController extends ChangeNotifier {
     return parts.join();
   }
 
+  /// Maximum number of tool-calling rounds before forcing a final text response.
+  static const int _maxToolRounds = 10;
+
   Future<void> _streamWithToolCalling(
     String assistantId,
     LlmModel model,
     List<ChatRequestMessage> conversationHistory,
     List<OpenAiTool>? openAiTools,
-    List<McpServerTool> mcpToolsList,
-  ) async {
+    List<McpServerTool> mcpToolsList, {
+    int currentRound = 0,
+  }) async {
+    // Only send tools to the API if we haven't exceeded the max rounds.
+    final toolsForRequest = currentRound < _maxToolRounds ? openAiTools : null;
+
     final eventStream = _apiClient.streamWithTools(
       model: model,
       conversationHistory: conversationHistory,
-      tools: openAiTools,
+      tools: toolsForRequest,
     );
 
     final builder = StringBuffer();
@@ -1045,7 +1052,8 @@ class ChatController extends ChangeNotifier {
           if (toolCallHandled) continue;
           final toolCalls = event.toolCalls;
           if (toolCalls.isNotEmpty &&
-              toolCalls.any((tc) => tc.function.name.isNotEmpty)) {
+              toolCalls.any((tc) => tc.function.name.isNotEmpty) &&
+              currentRound < _maxToolRounds) {
             toolCallHandled = true;
             await _handleToolCalls(
               assistantId,
@@ -1053,6 +1061,8 @@ class ChatController extends ChangeNotifier {
               conversationHistory,
               toolCalls,
               mcpToolsList,
+              openAiTools,
+              currentRound: currentRound + 1,
             );
           } else if (builder.isEmpty) {
             _updateMessage(
@@ -1076,9 +1086,11 @@ class ChatController extends ChangeNotifier {
     List<ChatRequestMessage> originalHistory,
     List<ToolCallInfo> toolCalls,
     List<McpServerTool> tools,
-  ) async {
+    List<OpenAiTool>? openAiTools, {
+    int currentRound = 1,
+  }) async {
     // Create ToolCallEntry list for UI display
-    final toolCallEntries = toolCalls
+    final newToolCallEntries = toolCalls
         .where((tc) => tc.function.name.isNotEmpty)
         .map((tc) => ToolCallEntry(
               id: tc.id,
@@ -1088,11 +1100,19 @@ class ChatController extends ChangeNotifier {
             ))
         .toList();
 
+    // Preserve tool call entries from previous rounds so they remain visible
+    // in the UI, and append the new round's entries.
+    final msgIdx = messages.indexWhere((m) => m.id == assistantId);
+    final existingToolCalls = msgIdx >= 0
+        ? List<ToolCallEntry>.from(messages[msgIdx].toolCalls)
+        : <ToolCallEntry>[];
+    final allToolCallEntries = [...existingToolCalls, ...newToolCallEntries];
+
     // Update the assistant message with tool call entries (visible in UI)
     // Preserve any text content the LLM may have streamed before tool calls.
     _updateMessage(
       assistantId,
-      toolCalls: List<ToolCallEntry>.from(toolCallEntries),
+      toolCalls: List<ToolCallEntry>.from(allToolCallEntries),
     );
 
     // Execute each tool call and update entries progressively
@@ -1131,17 +1151,17 @@ class ChatController extends ChangeNotifier {
       }
 
       // Update the entry with result
-      final entryIdx = toolCallEntries.indexWhere((e) => e.id == call.id);
+      final entryIdx = allToolCallEntries.indexWhere((e) => e.id == call.id);
       if (entryIdx >= 0) {
-        toolCallEntries[entryIdx].result = resultContent;
-        toolCallEntries[entryIdx].status = resultContent.startsWith('Error')
+        allToolCallEntries[entryIdx].result = resultContent;
+        allToolCallEntries[entryIdx].status = resultContent.startsWith('Error')
             ? ToolCallStatus.error
             : ToolCallStatus.completed;
         // Create a new list with new entry objects so the UI properly detects changes.
         _updateMessage(
           assistantId,
           toolCalls: [
-            for (final e in toolCallEntries)
+            for (final e in allToolCallEntries)
               ToolCallEntry(
                 id: e.id,
                 toolName: e.toolName,
@@ -1169,7 +1189,7 @@ class ChatController extends ChangeNotifier {
     );
 
     // Add tool result messages (role: tool with tool_call_id)
-    for (final entry in toolCallEntries) {
+    for (final entry in newToolCallEntries) {
       extendedHistory.add(
         ChatRequestMessage(
           role: 'tool',
@@ -1179,8 +1199,16 @@ class ChatController extends ChangeNotifier {
       );
     }
 
-    // Stream final response without tools to prevent infinite loop
-    await _streamWithToolCalling(assistantId, model, extendedHistory, null, []);
+    // Continue streaming -- pass tools forward so the model can make
+    // additional tool calls if needed (up to _maxToolRounds).
+    await _streamWithToolCalling(
+      assistantId,
+      model,
+      extendedHistory,
+      openAiTools,
+      tools,
+      currentRound: currentRound,
+    );
   }
 
   /// Execute a built-in system tool and return its result.

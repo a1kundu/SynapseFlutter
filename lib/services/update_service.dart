@@ -547,6 +547,13 @@ class DownloadManager {
           >();
       if (androidPlugin == null) return;
 
+      // Ensure POST_NOTIFICATIONS is granted before starting the foreground
+      // service.  PR / sideloaded builds have a unique application-id, so
+      // Android treats them as a brand-new app without any pre-granted
+      // permissions.  Re-requesting here is safe: the system returns
+      // immediately if the permission was already granted.
+      await androidPlugin.requestNotificationsPermission();
+
       await androidPlugin.startForegroundService(
         _downloadNotifId,
         'Downloading update v${update.version}',

@@ -78,9 +78,10 @@ void callbackDispatcher() {
 // ---------------------------------------------------------------------------
 
 class BackgroundUpdateManager {
-  static String get _taskUniqueName => kDebugMode
-      ? 'in.arijitk.synapse.debug.backgroundUpdateCheck'
-      : 'in.arijitk.synapse.backgroundUpdateCheck';
+  static String get _taskUniqueName {
+    final ch = UpdateService.channel; // 'debug', 'release', or 'pr<N>'
+    return 'in.arijitk.synapse.$ch.backgroundUpdateCheck';
+  }
 
   /// Initialise the Workmanager plugin. Call once from [main].
   static Future<void> init() async {

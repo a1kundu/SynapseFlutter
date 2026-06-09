@@ -19,11 +19,13 @@ Then point any OpenAI-compatible client at:
 """
 
 import argparse
+import hashlib
 import http.client
 import http.server
 import json
 import logging
 import os
+import platform
 import ssl
 import subprocess
 import sys
@@ -58,20 +60,30 @@ MODELS_CACHE_TTL_SECONDS = 300
 
 # Headers to mimic an official Copilot IDE extension
 IDE_HEADERS = {
-    "Editor-Version": "vscode/1.96.0",
-    "Editor-Plugin-Version": "copilot/1.250.0",
-    "User-Agent": "GithubCopilot/1.250.0",
+    "Editor-Version": "vscode/1.96.2",
+    "Editor-Plugin-Version": "copilot-chat/0.27.2025011501",
+    "User-Agent": "GitHubCopilotChat/0.27.2025011501",
+    "Copilot-Integration-Id": "vscode-chat",
 }
 
 # Token refresh buffer: refresh 2 minutes before expiry
 TOKEN_REFRESH_BUFFER_SECONDS = 120
 
-# Where to cache the Copilot OAuth token
-TOKEN_CACHE_FILE = os.path.join(
+# Max retries on upstream errors (401, 429, 5xx)
+MAX_UPSTREAM_RETRIES = 2
+RETRY_BACKOFF_SECONDS = 1.0
+
+# Config directory
+_CONFIG_DIR = os.path.join(
     os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
     "copilot-bridge",
-    "token.json",
 )
+
+# Where to cache the Copilot OAuth token
+TOKEN_CACHE_FILE = os.path.join(_CONFIG_DIR, "token.json")
+
+# Persistent machine ID (survives restarts, like real VS Code)
+MACHINE_ID_FILE = os.path.join(_CONFIG_DIR, "machine_id")
 
 
 
@@ -80,7 +92,54 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("copilot-bridge")
+log = logging.getLogger("github-copilot")
+
+
+# ---------------------------------------------------------------------------
+# Persistent identifiers (machine ID + session ID like real VS Code)
+# ---------------------------------------------------------------------------
+def _get_or_create_machine_id() -> str:
+    """Get or create a persistent machine ID (mimics VS Code's telemetry ID)."""
+    os.makedirs(os.path.dirname(MACHINE_ID_FILE), mode=0o700, exist_ok=True)
+    try:
+        with open(MACHINE_ID_FILE, "r") as f:
+            mid = f.read().strip()
+            if len(mid) == 64:
+                return mid
+    except FileNotFoundError:
+        pass
+    # Generate a deterministic-looking hex ID based on hostname + username
+    seed = f"{platform.node()}-{os.getenv('USER', 'default')}-vscode"
+    mid = hashlib.sha256(seed.encode()).hexdigest()
+    with open(MACHINE_ID_FILE, "w") as f:
+        f.write(mid)
+    os.chmod(MACHINE_ID_FILE, 0o600)
+    return mid
+
+
+MACHINE_ID = _get_or_create_machine_id()
+SESSION_ID = str(uuid.uuid4())  # Fresh per process, like real VS Code
+
+
+def _build_request_headers(
+    copilot_token: str,
+    *,
+    content_type: str = "application/json",
+    accept: str = "application/json",
+) -> dict:
+    """Build the full set of headers that real Copilot extensions send."""
+    return {
+        "Authorization": f"Bearer {copilot_token}",
+        "Content-Type": content_type,
+        "Accept": accept,
+        "X-Request-Id": str(uuid.uuid4()),
+        "VScode-SessionId": SESSION_ID,
+        "VScode-MachineId": MACHINE_ID,
+        "X-GitHub-Api-Version": "2023-07-07",
+        "Openai-Intent": "conversation-panel",
+        "Openai-Organization": "github-copilot",
+        **IDE_HEADERS,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -373,11 +432,7 @@ class CopilotProxy:
             copilot_token = self.tm.get_copilot_token()
             host = self.tm.copilot_chat_host
 
-            headers = {
-                "Authorization": f"Bearer {copilot_token}",
-                "Accept": "application/json",
-                **IDE_HEADERS,
-            }
+            headers = _build_request_headers(copilot_token)
 
             status, _, resp_body = _https_request(
                 host, "GET", COPILOT_MODELS_ENDPOINT, headers=headers
@@ -426,79 +481,129 @@ class CopilotProxy:
             log.info("Models catalog refreshed: %d models available.", len(models))
             return models
 
+    def _make_request(
+        self,
+        request_body: bytes,
+        *,
+        stream: bool = False,
+    ) -> tuple[int, dict, bytes]:
+        """
+        Forward a request to Copilot with automatic retry on auth failures.
+        Returns (status_code, response_headers_dict, response_body_bytes).
+        """
+        for attempt in range(MAX_UPSTREAM_RETRIES + 1):
+            copilot_token = self.tm.get_copilot_token()
+            host = self.tm.copilot_chat_host
+            accept = "text/event-stream" if stream else "application/json"
+            headers = _build_request_headers(copilot_token, accept=accept)
+
+            ctx = ssl.create_default_context()
+            conn = http.client.HTTPSConnection(host, context=ctx)
+            try:
+                conn.request("POST", COPILOT_CHAT_ENDPOINT, body=request_body, headers=headers)
+                resp = conn.getresponse()
+                resp_body = resp.read()
+                resp_headers = {k.lower(): v for k, v in resp.getheaders()}
+
+                # Retry on auth failure — session token may have expired
+                if resp.status in (401, 403) and attempt < MAX_UPSTREAM_RETRIES:
+                    log.warning(
+                        "Upstream returned %d, refreshing session token (attempt %d)...",
+                        resp.status, attempt + 1,
+                    )
+                    self.tm._copilot_token = None  # force refresh
+                    time.sleep(RETRY_BACKOFF_SECONDS)
+                    continue
+
+                # Retry on server errors
+                if resp.status >= 500 and attempt < MAX_UPSTREAM_RETRIES:
+                    log.warning(
+                        "Upstream returned %d, retrying (attempt %d)...",
+                        resp.status, attempt + 1,
+                    )
+                    time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+                    continue
+
+                return resp.status, resp_headers, resp_body
+            except (ConnectionError, OSError) as e:
+                if attempt < MAX_UPSTREAM_RETRIES:
+                    log.warning("Connection error: %s, retrying...", e)
+                    time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+                    continue
+                raise
+            finally:
+                conn.close()
+
+        # Should not reach here, but just in case
+        raise RuntimeError("Max retries exceeded")
+
     def chat_completions(self, request_body: bytes) -> tuple[int, dict, bytes]:
         """
         Forward a chat/completions request to Copilot.
         Returns (status_code, response_headers_dict, response_body_bytes).
         """
-        copilot_token = self.tm.get_copilot_token()
-        host = self.tm.copilot_chat_host
-
-        headers = {
-            "Authorization": f"Bearer {copilot_token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-Request-Id": str(uuid.uuid4()),
-            **IDE_HEADERS,
-        }
-
-        # Check if streaming is requested
-        try:
-            payload = json.loads(request_body)
-            is_stream = payload.get("stream", False)
-        except (json.JSONDecodeError, KeyError):
-            is_stream = False
-
-        if is_stream:
-            headers["Accept"] = "text/event-stream"
-
-        ctx = ssl.create_default_context()
-        conn = http.client.HTTPSConnection(host, context=ctx)
-        try:
-            conn.request("POST", COPILOT_CHAT_ENDPOINT, body=request_body, headers=headers)
-            resp = conn.getresponse()
-            resp_body = resp.read()
-            resp_headers = {k: v for k, v in resp.getheaders()}
-            return resp.status, resp_headers, resp_body
-        finally:
-            conn.close()
+        return self._make_request(request_body, stream=False)
 
     def chat_completions_stream(self, request_body: bytes):
         """
         Forward a streaming chat/completions request to Copilot.
-        Yields raw chunks as they arrive.
+        Yields raw chunks as they arrive. Retries on auth/server errors.
         """
-        copilot_token = self.tm.get_copilot_token()
-        host = self.tm.copilot_chat_host
+        for attempt in range(MAX_UPSTREAM_RETRIES + 1):
+            copilot_token = self.tm.get_copilot_token()
+            host = self.tm.copilot_chat_host
+            headers = _build_request_headers(
+                copilot_token, accept="text/event-stream"
+            )
 
-        headers = {
-            "Authorization": f"Bearer {copilot_token}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-            "X-Request-Id": str(uuid.uuid4()),
-            **IDE_HEADERS,
-        }
+            ctx = ssl.create_default_context()
+            conn = http.client.HTTPSConnection(host, context=ctx)
+            try:
+                conn.request("POST", COPILOT_CHAT_ENDPOINT, body=request_body, headers=headers)
+                resp = conn.getresponse()
 
-        ctx = ssl.create_default_context()
-        conn = http.client.HTTPSConnection(host, context=ctx)
-        try:
-            conn.request("POST", COPILOT_CHAT_ENDPOINT, body=request_body, headers=headers)
-            resp = conn.getresponse()
+                if resp.status in (401, 403) and attempt < MAX_UPSTREAM_RETRIES:
+                    log.warning(
+                        "Stream: upstream %d, refreshing token (attempt %d)...",
+                        resp.status, attempt + 1,
+                    )
+                    resp.read()  # drain
+                    conn.close()
+                    self.tm._copilot_token = None
+                    time.sleep(RETRY_BACKOFF_SECONDS)
+                    continue
 
-            if resp.status != 200:
-                body = resp.read()
-                yield resp.status, body
-                return
+                if resp.status >= 500 and attempt < MAX_UPSTREAM_RETRIES:
+                    log.warning(
+                        "Stream: upstream %d, retrying (attempt %d)...",
+                        resp.status, attempt + 1,
+                    )
+                    resp.read()
+                    conn.close()
+                    time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+                    continue
 
-            # Stream chunks
-            yield resp.status, None
-            while True:
-                chunk = resp.read(4096)
-                if not chunk:
-                    break
-                yield None, chunk
-        finally:
-            conn.close()
+                if resp.status != 200:
+                    body = resp.read()
+                    yield resp.status, body
+                    return
+
+                # Stream chunks
+                yield resp.status, None
+                while True:
+                    chunk = resp.read(4096)
+                    if not chunk:
+                        break
+                    yield None, chunk
+                return  # success, exit retry loop
+            except (ConnectionError, OSError) as e:
+                if attempt < MAX_UPSTREAM_RETRIES:
+                    log.warning("Stream connection error: %s, retrying...", e)
+                    time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+                    continue
+                raise
+            finally:
+                conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +615,10 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
     # Force HTTP/1.1 responses (required for Transfer-Encoding: chunked streaming)
     protocol_version = "HTTP/1.1"
 
+    # Server identity — matches OpenAI API server headers
+    server_version = "openai-api/1.0"
+    sys_version = ""
+
     # Shared across all handler instances
     proxy: CopilotProxy = None  # type: ignore[assignment]
 
@@ -519,7 +628,10 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
     def _set_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, X-Request-Id",
+        )
 
     def _send_json(self, status: int, data: dict | list):
         body = json.dumps(data, indent=2).encode("utf-8")
@@ -554,20 +666,24 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        path = self.path.rstrip("/")
+        path = self.path.split("?")[0].rstrip("/")  # strip query params
 
         if path in ("/v1/models", "/models"):
             self._handle_models()
+        elif path.startswith("/v1/models/") or path.startswith("/models/"):
+            self._handle_model_detail(path)
         elif path in ("/health", "/v1/health", "/"):
             self._handle_health()
         else:
             self._send_error_json(404, f"Unknown endpoint: {self.path}", "not_found")
 
     def do_POST(self):
-        path = self.path.rstrip("/")
+        path = self.path.split("?")[0].rstrip("/")
 
         if path in ("/v1/chat/completions", "/chat/completions"):
             self._handle_chat_completions()
+        elif path in ("/v1/embeddings", "/embeddings"):
+            self._handle_embeddings()
         else:
             self._send_error_json(404, f"Unknown endpoint: {self.path}", "not_found")
 
@@ -579,10 +695,55 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
     def _handle_models(self):
         try:
             models = self.proxy.fetch_models()
-            self._send_json(200, {"object": "list", "data": models})
+            # Filter: only return chat-capable models by default
+            chat_models = [
+                m for m in models
+                if not m["id"].startswith("text-embedding")
+                and m.get("capabilities", {}).get("type", "chat") == "chat"
+            ]
+            self._send_json(200, {"object": "list", "data": chat_models})
         except Exception as e:
             log.exception("Failed to fetch models")
             self._send_error_json(502, f"Failed to fetch models: {e}", "upstream_error")
+
+    def _handle_model_detail(self, path: str):
+        """GET /v1/models/{model_id} — return a single model."""
+        # Extract model ID from path
+        model_id = path.split("/models/", 1)[-1]
+        try:
+            models = self.proxy.fetch_models()
+            match = next((m for m in models if m["id"] == model_id), None)
+            if match:
+                self._send_json(200, match)
+            else:
+                self._send_error_json(
+                    404,
+                    f"Model '{model_id}' not found",
+                    "model_not_found",
+                )
+        except Exception as e:
+            log.exception("Failed to fetch model detail")
+            self._send_error_json(502, f"Failed to fetch model: {e}", "upstream_error")
+
+    def _handle_embeddings(self):
+        """POST /v1/embeddings — proxy to Copilot's embeddings endpoint."""
+        body = self._read_body()
+        try:
+            copilot_token = self.proxy.tm.get_copilot_token()
+            host = self.proxy.tm.copilot_chat_host
+            headers = _build_request_headers(copilot_token)
+            status, _, resp_body = _https_request(
+                host, "POST", "/embeddings", headers=headers, body=body
+            )
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self._set_cors_headers()
+            self.send_header("Content-Length", str(len(resp_body)))
+            self.end_headers()
+            self.wfile.write(resp_body)
+        except Exception as e:
+            log.exception("Embeddings request failed")
+            self._send_error_json(502, f"Embeddings failed: {e}", "upstream_error")
 
     def _handle_chat_completions(self):
         body = self._read_body()
@@ -603,9 +764,24 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
         # Default model if not specified
         if "model" not in payload:
             payload["model"] = "gpt-4o"
-            body = json.dumps(payload).encode("utf-8")
 
+        # Ensure messages is a non-empty list
+        if not isinstance(payload.get("messages"), list) or not payload["messages"]:
+            self._send_error_json(
+                400, "'messages' must be a non-empty array", "invalid_request"
+            )
+            return
+
+        # Re-encode (handles default model injection and any normalization)
+        body = json.dumps(payload).encode("utf-8")
         is_stream = payload.get("stream", False)
+
+        log.info(
+            "Chat request: model=%s stream=%s messages=%d",
+            payload.get("model"),
+            is_stream,
+            len(payload.get("messages", [])),
+        )
 
         try:
             if is_stream:
@@ -723,6 +899,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8080, copilot_host: str | No
     log.info("  Endpoints:")
     log.info("    GET  /v1/models              - List models")
     log.info("    POST /v1/chat/completions    - Chat completions")
+    log.info("    POST /v1/embeddings          - Embeddings")
     log.info("    GET  /health                 - Health check")
     log.info("")
     log.info("  Copilot backend: %s", tm.copilot_chat_host)

@@ -9,6 +9,7 @@ import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:highlight/highlight.dart' show highlight;
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../agents/agent_models.dart';
 import '../models/chat_models.dart';
 import '../services/chat_controller.dart';
 import '../utils/snackbar_service.dart';
@@ -30,6 +31,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  bool _subAgentDialogShowing = false;
+
+  /// The activity the user manually dismissed. Prevents auto-reopening
+  /// the dialog on every token update while the same sub-agent runs.
+  SubAgentActivity? _userDismissedActivity;
 
   ChatController get _ctrl => widget.controller;
 
@@ -37,6 +43,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _ctrl.addListener(_onControllerChanged);
+    _ctrl.subAgentActivity.addListener(_onSubAgentActivityChanged);
     _textController.text = _ctrl.inputText;
   }
 
@@ -45,17 +52,143 @@ class _ChatScreenState extends State<ChatScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onControllerChanged);
+      oldWidget.controller.subAgentActivity.removeListener(_onSubAgentActivityChanged);
       widget.controller.addListener(_onControllerChanged);
+      widget.controller.subAgentActivity.addListener(_onSubAgentActivityChanged);
     }
   }
 
   @override
   void dispose() {
     _ctrl.removeListener(_onControllerChanged);
+    _ctrl.subAgentActivity.removeListener(_onSubAgentActivityChanged);
     _scrollController.dispose();
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _onSubAgentActivityChanged() {
+    final activity = _ctrl.subAgentActivity.value;
+
+    if (activity == null) {
+      // Sub-agent finished and was cleared -- reset dismiss tracking
+      _userDismissedActivity = null;
+      return;
+    }
+
+    // If this is a different activity than what the user dismissed,
+    // reset the flag (a new sub-agent started)
+    if (_userDismissedActivity != null && _userDismissedActivity != activity) {
+      _userDismissedActivity = null;
+    }
+
+    // Auto-open only if: not already showing, and user hasn't dismissed this one
+    if (!_subAgentDialogShowing && _userDismissedActivity == null) {
+      _openLiveSubAgentDialog();
+    }
+  }
+
+  /// Open the live sub-agent dialog (for a running sub-agent).
+  void _openLiveSubAgentDialog() {
+    if (_subAgentDialogShowing) return;
+    _subAgentDialogShowing = true;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => _SubAgentDialog(
+        activityNotifier: _ctrl.subAgentActivity,
+        onDismiss: () {
+          Navigator.of(dialogContext).pop();
+        },
+      ),
+    ).then((_) {
+      _subAgentDialogShowing = false;
+      // If the sub-agent is still running, mark as user-dismissed
+      final activity = _ctrl.subAgentActivity.value;
+      if (activity != null && activity.isRunning) {
+        _userDismissedActivity = activity;
+      }
+    });
+  }
+
+  /// Show the sub-agent activity dialog for a given tool call.
+  /// If the sub-agent is still running (live), opens the live dialog.
+  /// If completed, opens a static replay dialog.
+  void _showSubAgentActivity(String toolCallId) {
+    // Check if this is the currently running sub-agent
+    final liveActivity = _ctrl.subAgentActivity.value;
+    if (liveActivity != null &&
+        liveActivity.toolCallId == toolCallId &&
+        liveActivity.isRunning) {
+      // Re-open the live dialog and clear the dismiss flag
+      _userDismissedActivity = null;
+      _openLiveSubAgentDialog();
+      return;
+    }
+
+    // Otherwise, show completed activity as static replay
+    var activity = _ctrl.completedSubAgentActivities[toolCallId];
+
+    // If not in the in-memory map (e.g. after app restart), reconstruct
+    // from the persisted ToolCallEntry data so the dialog still works.
+    if (activity == null) {
+      activity = _reconstructSubAgentActivity(toolCallId);
+      if (activity == null) return;
+      // Cache so subsequent taps are instant
+      _ctrl.completedSubAgentActivities[toolCallId] = activity;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => _SubAgentDialog(
+        staticActivity: activity,
+        onDismiss: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
+  }
+
+  /// Reconstruct a [SubAgentActivity] from a persisted [ToolCallEntry].
+  ///
+  /// After an app restart `completedSubAgentActivities` is empty, but
+  /// [ChatMessage.toolCalls] are persisted. We can extract the agent name,
+  /// task, and final result from the `delegate_to_agent` call's arguments
+  /// and result to build a static replay activity.
+  SubAgentActivity? _reconstructSubAgentActivity(String toolCallId) {
+    for (final msg in _ctrl.messages) {
+      for (final entry in msg.toolCalls) {
+        if (entry.id == toolCallId && entry.toolName == 'delegate_to_agent') {
+          try {
+            final args =
+                json.decode(entry.arguments) as Map<String, dynamic>;
+            final agentName = args['agent'] as String? ?? 'unknown';
+            final task = args['task'] as String? ?? '';
+
+            // Strip the "[Sub-agent: …]\n\n" prefix from the result if present
+            var resultContent = entry.result;
+            final prefixPattern = RegExp(r'^\[Sub-agent: [^\]]+\]\n\n');
+            resultContent = resultContent.replaceFirst(prefixPattern, '');
+
+            return SubAgentActivity(
+              agentName: agentName,
+              agentRole: '',
+              taskDescription: task,
+              toolCallId: toolCallId,
+              streamingContent: resultContent,
+              isRunning: false,
+              isComplete: true,
+              error: entry.status == ToolCallStatus.error ? resultContent : null,
+            );
+          } catch (_) {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   void _onControllerChanged() {
@@ -232,6 +365,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       onFork: _forkChat,
                       onRetry: _retryMessage,
                       isGenerating: _ctrl.isGenerating,
+                      onSubAgentTap: _showSubAgentActivity,
                     );
                   },
                 ),
@@ -850,6 +984,7 @@ class _MessageBubble extends StatefulWidget {
   final ValueChanged<String> onFork;
   final ValueChanged<String> onRetry;
   final bool isGenerating;
+  final void Function(String toolCallId)? onSubAgentTap;
 
   const _MessageBubble({
     required this.message,
@@ -858,6 +993,7 @@ class _MessageBubble extends StatefulWidget {
     required this.onFork,
     required this.onRetry,
     required this.isGenerating,
+    this.onSubAgentTap,
   });
 
   @override
@@ -969,6 +1105,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     _ToolCallSteps(
                       toolCalls: widget.message.toolCalls,
                       contentColor: contentColor,
+                      onSubAgentTap: widget.onSubAgentTap,
                     ),
                     if (widget.message.content.isNotEmpty)
                       const SizedBox(height: 10),
@@ -1634,8 +1771,13 @@ class _AttachmentChip extends StatelessWidget {
 class _ToolCallSteps extends StatelessWidget {
   final List<ToolCallEntry> toolCalls;
   final Color contentColor;
+  final void Function(String toolCallId)? onSubAgentTap;
 
-  const _ToolCallSteps({required this.toolCalls, required this.contentColor});
+  const _ToolCallSteps({
+    required this.toolCalls,
+    required this.contentColor,
+    this.onSubAgentTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1643,17 +1785,24 @@ class _ToolCallSteps extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: toolCalls.map((entry) {
+        final isSubAgent = entry.toolName == 'delegate_to_agent';
         final IconData icon;
         final Color iconColor;
         switch (entry.status) {
           case ToolCallStatus.running:
-            icon = Icons.hourglass_top_rounded;
-            iconColor = cs.tertiary;
+            icon = isSubAgent
+                ? Icons.smart_toy_outlined
+                : Icons.hourglass_top_rounded;
+            iconColor = isSubAgent ? cs.primary : cs.tertiary;
           case ToolCallStatus.completed:
-            icon = Icons.check_circle_outline_rounded;
+            icon = isSubAgent
+                ? Icons.smart_toy_rounded
+                : Icons.check_circle_outline_rounded;
             iconColor = Colors.green;
           case ToolCallStatus.error:
-            icon = Icons.error_outline_rounded;
+            icon = isSubAgent
+                ? Icons.smart_toy_outlined
+                : Icons.error_outline_rounded;
             iconColor = cs.error;
         }
         return _ToolCallTile(
@@ -1661,6 +1810,8 @@ class _ToolCallSteps extends StatelessWidget {
           icon: icon,
           iconColor: iconColor,
           contentColor: contentColor,
+          isSubAgent: isSubAgent,
+          onSubAgentTap: isSubAgent ? onSubAgentTap : null,
         );
       }).toList(),
     );
@@ -1672,12 +1823,16 @@ class _ToolCallTile extends StatefulWidget {
   final IconData icon;
   final Color iconColor;
   final Color contentColor;
+  final bool isSubAgent;
+  final void Function(String toolCallId)? onSubAgentTap;
 
   const _ToolCallTile({
     required this.entry,
     required this.icon,
     required this.iconColor,
     required this.contentColor,
+    this.isSubAgent = false,
+    this.onSubAgentTap,
   });
 
   @override
@@ -1692,24 +1847,49 @@ class _ToolCallTileState extends State<_ToolCallTile> {
     final cs = Theme.of(context).colorScheme;
     final hasResult = widget.entry.result.isNotEmpty;
 
+    // For sub-agent calls, extract the agent name from arguments for display
+    String displayName = widget.entry.toolName;
+    String? subAgentTask;
+    if (widget.isSubAgent) {
+      try {
+        final args = json.decode(widget.entry.arguments) as Map<String, dynamic>;
+        final agentName = args['agent'] as String? ?? '';
+        subAgentTask = args['task'] as String?;
+        if (agentName.isNotEmpty) {
+          displayName = 'Agent: ${agentName[0].toUpperCase()}${agentName.substring(1)}';
+        }
+      } catch (_) {
+        displayName = 'Sub-agent';
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row (tap to expand)
+          // Header row (tap to expand or open sub-agent dialog)
           InkWell(
-            onTap: hasResult
-                ? () => setState(() => _expanded = !_expanded)
-                : null,
+            onTap: widget.isSubAgent && widget.onSubAgentTap != null
+                ? () {
+                    // Open the sub-agent activity dialog (works even while running)
+                    widget.onSubAgentTap!(widget.entry.id);
+                  }
+                : hasResult
+                    ? () => setState(() => _expanded = !_expanded)
+                    : null,
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: widget.contentColor.withValues(alpha: 0.06),
+                color: widget.isSubAgent
+                    ? cs.primaryContainer.withValues(alpha: 0.25)
+                    : widget.contentColor.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: cs.outlineVariant.withValues(alpha: 0.3),
+                  color: widget.isSubAgent
+                      ? cs.primary.withValues(alpha: 0.3)
+                      : cs.outlineVariant.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -1718,21 +1898,38 @@ class _ToolCallTileState extends State<_ToolCallTile> {
                   Icon(widget.icon, size: 16, color: widget.iconColor),
                   const SizedBox(width: 6),
                   Flexible(
-                    child: Text(
-                      widget.entry.toolName,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: widget.contentColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: widget.contentColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (widget.isSubAgent && subAgentTask != null && subAgentTask.isNotEmpty)
+                          Text(
+                            subAgentTask,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: widget.contentColor.withValues(alpha: 0.6),
+                              fontSize: 11,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                     ),
                   ),
-                  if (hasResult) ...[
+                  if (hasResult || (widget.isSubAgent && widget.onSubAgentTap != null)) ...[
                     const SizedBox(width: 4),
                     Icon(
-                      _expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
+                      widget.isSubAgent && widget.onSubAgentTap != null
+                          ? Icons.open_in_new_rounded
+                          : _expanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
                       size: 16,
                       color: widget.contentColor.withValues(alpha: 0.5),
                     ),
@@ -2527,6 +2724,383 @@ class _MermaidCodeBlockState extends State<_MermaidCodeBlock> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Sub-Agent Live Activity Dialog ─────────────────────────────────────
+
+/// Dialog that shows real-time sub-agent activity, mirroring the main
+/// chat experience: streaming text, tool call tiles, and status indicators.
+class _SubAgentDialog extends StatefulWidget {
+  /// Live notifier for a running sub-agent. null when showing a static replay.
+  final SubAgentActivityNotifier? activityNotifier;
+
+  /// Static activity for replaying a completed sub-agent run.
+  final SubAgentActivity? staticActivity;
+
+  final VoidCallback onDismiss;
+
+  const _SubAgentDialog({
+    this.activityNotifier,
+    this.staticActivity,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_SubAgentDialog> createState() => _SubAgentDialogState();
+}
+
+class _SubAgentDialogState extends State<_SubAgentDialog> {
+  final ScrollController _scrollController = ScrollController();
+
+  /// Whether this is a live dialog (with a notifier) or a static replay.
+  bool get _isLive => widget.activityNotifier != null;
+
+  SubAgentActivity? get _activity =>
+      _isLive ? widget.activityNotifier!.value : widget.staticActivity;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isLive) {
+      widget.activityNotifier!.addListener(_onActivityChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_isLive) {
+      widget.activityNotifier!.removeListener(_onActivityChanged);
+    }
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onActivityChanged() {
+    final activity = widget.activityNotifier!.value;
+    if (activity == null) {
+      // Sub-agent cleared -- dismiss the dialog
+      widget.onDismiss();
+      return;
+    }
+    setState(() {});
+    // Auto-scroll to bottom as content streams in
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activity = _activity;
+    if (activity == null) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final contentColor = isDark ? Colors.white : Colors.black87;
+    final screenSize = MediaQuery.of(context).size;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: screenSize.height * 0.75,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Header ──────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.4),
+                border: Border(
+                  bottom: BorderSide(
+                    color: cs.outlineVariant.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    activity.isRunning
+                        ? Icons.smart_toy_outlined
+                        : Icons.smart_toy_rounded,
+                    size: 20,
+                    color: activity.isComplete && activity.error != null
+                        ? cs.error
+                        : cs.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Agent: ${activity.agentName[0].toUpperCase()}${activity.agentName.substring(1)}',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          activity.taskDescription,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: contentColor.withValues(alpha: 0.6),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (activity.isRunning)
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.primary,
+                      ),
+                    )
+                  else
+                    Icon(
+                      activity.error != null
+                          ? Icons.error_outline_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 18,
+                      color: activity.error != null ? cs.error : Colors.green,
+                    ),
+                ],
+              ),
+            ),
+
+            // ── Scrollable content ──────────────────────────────
+            Flexible(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Tool calls
+                    if (activity.toolCalls.isNotEmpty) ...[
+                      ...activity.toolCalls.map((tc) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: _SubAgentToolCallTile(
+                          toolCall: tc,
+                          contentColor: contentColor,
+                        ),
+                      )),
+                      if (activity.streamingContent.isNotEmpty)
+                        const SizedBox(height: 10),
+                    ],
+
+                    // Streaming text content
+                    if (activity.streamingContent.isNotEmpty)
+                      SelectableText(
+                        activity.streamingContent,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: contentColor,
+                        ),
+                      )
+                    else if (activity.isRunning && activity.toolCalls.isEmpty)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _StreamingIndicator(tint: contentColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Thinking...',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: contentColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    // Error
+                    if (activity.error != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, size: 16, color: cs.error),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                activity.error!,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: cs.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Footer ──────────────────────────────────────────
+            if (activity.isComplete || !_isLive)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: cs.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: widget.onDismiss,
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A tool call tile within the sub-agent dialog.
+class _SubAgentToolCallTile extends StatefulWidget {
+  final SubAgentToolCall toolCall;
+  final Color contentColor;
+
+  const _SubAgentToolCallTile({
+    required this.toolCall,
+    required this.contentColor,
+  });
+
+  @override
+  State<_SubAgentToolCallTile> createState() => _SubAgentToolCallTileState();
+}
+
+class _SubAgentToolCallTileState extends State<_SubAgentToolCallTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasResult = widget.toolCall.result != null &&
+        widget.toolCall.result!.isNotEmpty;
+
+    final IconData icon;
+    final Color iconColor;
+    switch (widget.toolCall.status) {
+      case SubAgentToolStatus.running:
+        icon = Icons.hourglass_top_rounded;
+        iconColor = cs.tertiary;
+      case SubAgentToolStatus.completed:
+        icon = Icons.check_circle_outline_rounded;
+        iconColor = Colors.green;
+      case SubAgentToolStatus.error:
+        icon = Icons.error_outline_rounded;
+        iconColor = cs.error;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: hasResult
+              ? () => setState(() => _expanded = !_expanded)
+              : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: widget.contentColor.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: iconColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    widget.toolCall.toolName,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: widget.contentColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasResult) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 16,
+                    color: widget.contentColor.withValues(alpha: 0.5),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (_expanded && hasResult) ...[
+          const SizedBox(height: 4),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.toolCall.arguments.isNotEmpty &&
+                    widget.toolCall.arguments != '{}') ...[
+                  _CopyableSection(
+                    label: 'Arguments',
+                    content: widget.toolCall.arguments,
+                    contentColor: widget.contentColor,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                _CopyableSection(
+                  label: 'Result',
+                  content: widget.toolCall.result!,
+                  contentColor: widget.contentColor,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

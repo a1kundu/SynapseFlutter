@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../agents/agents.dart';
 import '../models/chat_models.dart';
 import '../models/chat_session.dart';
 import '../models/llm_models.dart';
@@ -22,6 +23,18 @@ class ChatController extends ChangeNotifier {
   final McpClient _mcpClient = McpClient();
   final ChatStorage _storage = ChatStorage.instance;
   final LuaExecutor _luaExecutor = LuaExecutor();
+
+  // ── Multi-agent orchestration ───────────────────────────────────────
+  final AgentExecutor _agentExecutor = AgentExecutor();
+  final AgentRegistry _agentRegistry = AgentRegistry();
+
+  /// Notifier for live sub-agent activity. The UI listens to this to
+  /// show/hide the sub-agent dialog. null = no sub-agent running.
+  final SubAgentActivityNotifier subAgentActivity = SubAgentActivityNotifier();
+
+  /// Completed sub-agent activities, keyed by tool call ID.
+  /// Allows the UI to re-open the dialog for past sub-agent runs.
+  final Map<String, SubAgentActivity> completedSubAgentActivities = {};
 
   int _messageCounter = 0;
 
@@ -304,6 +317,49 @@ class ChatController extends ChangeNotifier {
       ),
       isSystemTool: true,
     ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'delegate_to_agent',
+        description:
+            'Delegate a task to a specialized sub-agent. Each sub-agent has '
+            'its own expertise and tools. Use this when a task is best handled '
+            'by a specialist rather than doing everything yourself.\n\n'
+            'Available agents:\n'
+            '- **researcher**: Web research specialist -- can search the internet, '
+            'read web pages, and call REST APIs to gather information.\n'
+            '- **coder**: Code execution specialist -- can write and run Lua scripts '
+            'for computation, data processing, and problem solving.\n'
+            '- **summarizer**: Text analysis specialist -- distills information into '
+            'clear, concise summaries (no tools, pure reasoning).\n\n'
+            'The sub-agent will execute independently and return its result to you. '
+            'You can then use that result to continue your response.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'agent': {
+              'type': 'string',
+              'enum': ['researcher', 'coder', 'summarizer'],
+              'description': 'The sub-agent to delegate the task to.',
+            },
+            'task': {
+              'type': 'string',
+              'description':
+                  'A clear, detailed description of the task for the sub-agent. '
+                  'Include all necessary context the sub-agent needs to complete the task.',
+            },
+            'context': {
+              'type': 'string',
+              'description':
+                  'Optional additional context or data to pass to the sub-agent '
+                  '(e.g. text to summarize, prior research results, etc.).',
+            },
+          },
+          'required': ['agent', 'task'],
+        },
+      ),
+      isSystemTool: true,
+    ),
   ];
 
   /// All tools: system + MCP.
@@ -325,6 +381,11 @@ class ChatController extends ChangeNotifier {
   }
 
   ChatController() {
+    // Register built-in sub-agents
+    _agentRegistry.register(ResearcherAgent());
+    _agentRegistry.register(CoderAgent());
+    _agentRegistry.register(SummarizerAgent());
+
     _loadSessions();
     refreshModels();
     refreshMcpTools();
@@ -1089,7 +1150,8 @@ class ChatController extends ChangeNotifier {
       }
 
       if (serverTool != null && serverTool.isSystemTool) {
-        resultContent = await _executeSystemTool(toolName, args);
+        resultContent = await _executeSystemTool(toolName, args,
+            toolCallId: call.id);
       } else if (serverTool != null) {
         try {
           resultContent = await _mcpClient.callTool(
@@ -1160,8 +1222,9 @@ class ChatController extends ChangeNotifier {
   /// Execute a built-in system tool and return its result.
   Future<String> _executeSystemTool(
     String toolName,
-    Map<String, dynamic> args,
-  ) async {
+    Map<String, dynamic> args, {
+    String? toolCallId,
+  }) async {
     switch (toolName) {
       case 'current_date_time':
         final now = DateTime.now();
@@ -1247,9 +1310,102 @@ class ChatController extends ChangeNotifier {
           body: body,
           timeoutSeconds: timeoutSeconds,
         );
+      case 'delegate_to_agent':
+        return await _executeDelegateToAgent(args, toolCallId: toolCallId);
       default:
         return "Error: Unknown system tool '$toolName'";
     }
+  }
+
+  /// Execute the delegate_to_agent meta-tool: run a sub-agent via
+  /// [AgentExecutor] and return its result as a tool output.
+  ///
+  /// Pushes live updates to [subAgentActivity] so the UI can show a
+  /// real-time dialog of the sub-agent's progress. Completed activities
+  /// are stored in [completedSubAgentActivities] so they can be re-opened.
+  Future<String> _executeDelegateToAgent(
+    Map<String, dynamic> args, {
+    String? toolCallId,
+  }) async {
+    final agentName = args['agent'] as String? ?? '';
+    final taskDesc = args['task'] as String? ?? '';
+    final context = args['context'] as String?;
+
+    if (agentName.isEmpty) return 'Error: Agent name is required.';
+    if (taskDesc.isEmpty) return 'Error: Task description is required.';
+
+    final agent = _agentRegistry.get(agentName);
+    if (agent == null) {
+      return 'Error: Unknown agent "$agentName". '
+          'Available agents: ${_agentRegistry.names.join(", ")}';
+    }
+
+    // Use the currently selected model for the sub-agent
+    final model = selectedModel;
+    if (model == null) return 'Error: No model selected for sub-agent execution.';
+
+    // Start live activity tracking
+    final activity = SubAgentActivity(
+      agentName: agent.name,
+      agentRole: agent.role,
+      taskDescription: taskDesc,
+      toolCallId: toolCallId,
+    );
+    subAgentActivity.value = activity;
+
+    final task = AgentTask(description: taskDesc, context: context);
+    final result = await _agentExecutor.run(
+      agent: agent,
+      task: task,
+      model: model,
+      onToken: (token) {
+        activity.streamingContent += token;
+        subAgentActivity.notify();
+      },
+      onToolCall: (toolName, arguments, resultContent) {
+        if (resultContent == null) {
+          // Tool call started
+          activity.toolCalls.add(SubAgentToolCall(
+            toolName: toolName,
+            arguments: arguments,
+          ));
+        } else {
+          // Tool call finished -- update the last matching entry
+          final entry = activity.toolCalls.lastWhere(
+            (t) => t.toolName == toolName && t.result == null,
+            orElse: () => activity.toolCalls.last,
+          );
+          entry.result = resultContent;
+          entry.status = resultContent.startsWith('Error')
+              ? SubAgentToolStatus.error
+              : SubAgentToolStatus.completed;
+        }
+        subAgentActivity.notify();
+      },
+    );
+
+    // Mark activity as complete
+    activity.isRunning = false;
+    activity.isComplete = true;
+    if (!result.success) {
+      activity.error = result.error;
+    } else {
+      // Update streaming content with final result in case the last
+      // streaming round cleared it
+      activity.streamingContent = result.content;
+    }
+    subAgentActivity.notify();
+
+    // Store the completed activity so it can be re-opened from the tile
+    if (toolCallId != null) {
+      completedSubAgentActivities[toolCallId] = activity;
+    }
+
+    if (!result.success) {
+      return 'Sub-agent "$agentName" failed: ${result.error}';
+    }
+
+    return '[Sub-agent: ${agent.name}]\n\n${result.content}';
   }
 
   void _updateMessage(String id, {String? content, bool? streaming, List<ToolCallEntry>? toolCalls}) {

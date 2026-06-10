@@ -384,10 +384,10 @@ class _ChatScreenState extends State<ChatScreen> {
             final cs = Theme.of(context).colorScheme;
             return Container(
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
+                color: cs.surfaceContainerLow,
                 border: Border(
                   top: BorderSide(
-                    color: cs.outline.withValues(alpha: 0.4),
+                    color: cs.outlineVariant.withValues(alpha: 0.35),
                     width: 1,
                   ),
                 ),
@@ -2240,27 +2240,67 @@ class _AttachmentPreviewBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      elevation: 2,
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
       child: SizedBox(
-        height: 48,
+        height: 40,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           itemCount: attachments.length,
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (context, index) {
             final a = attachments[index];
-            return InputChip(
-              label: Text(
-                a.fileName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                color: cs.secondaryContainer.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: cs.secondary.withValues(alpha: 0.15),
+                ),
               ),
-              avatar: const Icon(Icons.insert_drive_file_outlined, size: 16),
-              deleteIcon: const Icon(Icons.close, size: 16),
-              onDeleted: () => onRemove(index),
-              onPressed: () {},
+              child: Padding(
+                padding: const EdgeInsets.only(left: 10, right: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.insert_drive_file_rounded,
+                      size: 15,
+                      color: cs.onSecondaryContainer,
+                    ),
+                    const SizedBox(width: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(
+                        a.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: cs.onSecondaryContainer,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        iconSize: 14,
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: cs.onSecondaryContainer
+                              .withValues(alpha: 0.7),
+                        ),
+                        onPressed: () => onRemove(index),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             );
           },
         ),
@@ -2558,138 +2598,191 @@ class _ChatInputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasText = textController.text.trim().isNotEmpty;
 
     return SafeArea(
       top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Text field with rounded border
-            Container(
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: cs.outline.withValues(alpha: 0.3)),
-              ),
-              child: TextField(
-                controller: textController,
-                focusNode: focusNode,
-                autofocus: false,
-                onChanged: onTextChange,
-                onSubmitted: (_) {
-                  if (textController.text.trim().isNotEmpty && !isGenerating) {
-                    onSend();
-                  }
-                },
-                minLines: 1,
-                maxLines: 5,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: isGenerating
-                      ? 'Generating... press stop to cancel'
-                      : 'Type a message...',
-                  hintStyle: TextStyle(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: cs.onSurface),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: isDark
+                ? cs.surfaceContainerHigh
+                : cs.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.4 : 0.5),
             ),
-
-            const SizedBox(height: 8),
-
-            // Bottom toolbar
-            Row(
+            boxShadow: [
+              BoxShadow(
+                color: cs.shadow.withValues(alpha: isDark ? 0.25 : 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 3),
+                spreadRadius: -2,
+              ),
+              BoxShadow(
+                color: cs.shadow.withValues(alpha: isDark ? 0.12 : 0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Attach button
-                SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 20,
-                    icon: Icon(
-                      Icons.attach_file,
-                      color: cs.onSurfaceVariant,
+                // ── Text input area ──
+                TextField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  autofocus: false,
+                  onChanged: onTextChange,
+                  onSubmitted: (_) {
+                    if (hasText && !isGenerating) onSend();
+                  },
+                  minLines: 1,
+                  maxLines: 8,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: isGenerating
+                        ? 'Generating\u2026 tap stop to cancel'
+                        : 'Message Synapse\u2026',
+                    hintStyle: TextStyle(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                      fontWeight: FontWeight.w400,
+                      fontSize: 15,
                     ),
-                    onPressed: onAttach,
-                    tooltip: 'Attach file',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding:
+                        const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: cs.onSurface,
+                        height: 1.45,
+                        fontSize: 15,
+                      ),
+                ),
+
+                // ── Subtle toolbar divider ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: cs.outlineVariant.withValues(alpha: 0.25),
                   ),
                 ),
 
-
-                // Export chat button
-                if (hasMessages)
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      iconSize: 20,
-                      icon: Icon(
-                        Icons.download_outlined,
-                        color: cs.onSurfaceVariant,
+                // ── Action toolbar ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 6, 6),
+                  child: Row(
+                    children: [
+                      // Attach file
+                      _InputToolbarButton(
+                        icon: Icons.attach_file_rounded,
+                        tooltip: 'Attach file',
+                        onPressed: onAttach,
                       ),
-                      onPressed: onExportChat,
-                      tooltip: 'Export chat as JSON',
-                    ),
-                  ),
 
-                const Spacer(),
-
-                // Send or Stop button
-                SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: isGenerating
-                      ? FilledButton(
-                          onPressed: onCancel,
-                          style: FilledButton.styleFrom(
-                            shape: const CircleBorder(),
-                            padding: EdgeInsets.zero,
-                            backgroundColor: cs.error,
-                          ),
-                          child: Icon(
-                            Icons.stop_rounded,
-                            size: 20,
-                            color: cs.onError,
-                          ),
-                        )
-                      : FilledButton(
-                          onPressed:
-                              textController.text.trim().isNotEmpty
-                              ? onSend
-                              : null,
-                          style: FilledButton.styleFrom(
-                            shape: const CircleBorder(),
-                            padding: EdgeInsets.zero,
-                            backgroundColor: cs.primary,
-                            disabledBackgroundColor: cs.onSurface.withValues(
-                              alpha: 0.12,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.send,
-                            size: 18,
-                            color:
-                                textController.text.trim().isNotEmpty
-                                ? cs.onPrimary
-                                : cs.onSurface.withValues(alpha: 0.38),
-                          ),
+                      // Export chat
+                      if (hasMessages)
+                        _InputToolbarButton(
+                          icon: Icons.download_rounded,
+                          tooltip: 'Export chat as JSON',
+                          onPressed: onExportChat,
                         ),
+
+                      const Spacer(),
+
+                      // Send / Stop button
+                      SizedBox(
+                        width: 38,
+                        height: 38,
+                        child: isGenerating
+                            ? Material(
+                                color: cs.errorContainer,
+                                shape: const CircleBorder(),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: onCancel,
+                                  customBorder: const CircleBorder(),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.stop_rounded,
+                                      size: 22,
+                                      color: cs.onErrorContainer,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Material(
+                                color: hasText
+                                    ? cs.primary
+                                    : cs.onSurface.withValues(alpha: 0.08),
+                                shape: const CircleBorder(),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: hasText ? onSend : null,
+                                  customBorder: const CircleBorder(),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.arrow_upward_rounded,
+                                      size: 22,
+                                      color: hasText
+                                          ? cs.onPrimary
+                                          : cs.onSurface
+                                              .withValues(alpha: 0.25),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Input Toolbar Button ────────────────────────────────────────────────────
+
+class _InputToolbarButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _InputToolbarButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 38,
+      height: 38,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+        tooltip: tooltip,
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
     );

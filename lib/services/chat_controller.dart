@@ -13,6 +13,7 @@ import 'mcp_client.dart';
 import 'notification_service.dart';
 import 'rest_client_service.dart';
 import 'memory_service.dart';
+import 'file_system_service.dart';
 import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
@@ -407,6 +408,75 @@ class ChatController extends ChangeNotifier {
                   'Search query string for the search action. Use natural '
                   'language — the search engine tokenizes and ranks results '
                   'by relevance.',
+            },
+          },
+          'required': ['action'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'file_manager',
+        description:
+            'Access the Android local file system — phone memory, SD card, and USB storage. '
+            'Supports browsing directories, reading/writing text files, '
+            'copying, moving, deleting files and folders, creating directories, '
+            'and querying file metadata.\n\n'
+            'Actions:\n'
+            '- **list_storage**: List all storage volumes (internal, SD card, USB) with paths.\n'
+            '- **list**: List files and folders in a directory.\n'
+            '- **read**: Read a text file\'s content.\n'
+            '- **write**: Create or update a text file.\n'
+            '- **copy**: Copy a file or directory (set recursive=true for directories).\n'
+            '- **move**: Move or rename a file or directory.\n'
+            '- **delete**: Delete a file or directory (set recursive=true for non-empty directories).\n'
+            '- **mkdir**: Create a directory (creates parent directories automatically).\n'
+            '- **info**: Get detailed metadata about a file or directory.\n'
+            '- **exists**: Check if a path exists.\n\n'
+            'Start with list_storage to discover available storage paths, then use list '
+            'to browse. Internal storage is typically at /storage/emulated/0.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'list_storage', 'list', 'read', 'write',
+                'copy', 'move', 'delete', 'mkdir', 'info', 'exists',
+              ],
+              'description':
+                  'The file system operation to perform.',
+            },
+            'path': {
+              'type': 'string',
+              'description':
+                  'The absolute file or directory path '
+                  '(e.g. "/storage/emulated/0/Documents"). '
+                  'Required for all actions except list_storage.',
+            },
+            'destination': {
+              'type': 'string',
+              'description':
+                  'The destination path for copy and move operations.',
+            },
+            'content': {
+              'type': 'string',
+              'description':
+                  'The text content to write for the write action.',
+            },
+            'recursive': {
+              'type': 'boolean',
+              'description':
+                  'If true: list traverses subdirectories, copy copies directory trees, '
+                  'delete removes non-empty directories. Defaults to false.',
+            },
+            'show_hidden': {
+              'type': 'boolean',
+              'description':
+                  'If true, include hidden files/folders (names starting with ".") '
+                  'in directory listings. Defaults to false.',
             },
           },
           'required': ['action'],
@@ -1532,6 +1602,19 @@ class ChatController extends ChangeNotifier {
         );
       case 'memory_manage':
         return _executeMemoryManage(args);
+      case 'file_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) {
+          return 'Error: "action" is required.';
+        }
+        return await FileSystemService.execute(
+          action: action,
+          path: args['path'] as String?,
+          destination: args['destination'] as String?,
+          content: args['content'] as String?,
+          recursive: args['recursive'] as bool? ?? false,
+          showHidden: args['show_hidden'] as bool? ?? false,
+        );
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);
       default:

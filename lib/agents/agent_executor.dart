@@ -7,6 +7,7 @@ import '../services/mcp_client.dart';
 import '../services/lua_executor.dart';
 import '../services/notification_service.dart';
 import '../services/rest_client_service.dart';
+import '../services/ssh_service.dart';
 import '../services/web_search_service.dart';
 import '../services/web_crawler.dart';
 import 'agent.dart';
@@ -349,6 +350,23 @@ class AgentExecutor {
           headers: headers,
           body: body,
           timeoutSeconds: timeoutSeconds,
+        );
+      case 'ssh_execute':
+        final sshHost = args['host'] as String? ?? '';
+        if (sshHost.trim().isEmpty) return 'Error: SSH host is required.';
+        final sshUsername = args['username'] as String? ?? '';
+        if (sshUsername.trim().isEmpty) return 'Error: SSH username is required.';
+        final sshCommand = args['command'] as String? ?? '';
+        if (sshCommand.trim().isEmpty) return 'Error: SSH command is required.';
+        return await SshService.execute(
+          host: sshHost,
+          port: (args['port'] as int?) ?? 22,
+          username: sshUsername,
+          password: args['password'] as String?,
+          privateKey: args['private_key'] as String?,
+          passphrase: args['passphrase'] as String?,
+          command: sshCommand,
+          timeoutSeconds: (args['timeout_seconds'] as int?) ?? 30,
         );
       default:
         return "Error: Unknown system tool '$toolName'";

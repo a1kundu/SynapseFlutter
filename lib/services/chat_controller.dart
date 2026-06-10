@@ -12,6 +12,7 @@ import 'lua_executor.dart';
 import 'mcp_client.dart';
 import 'notification_service.dart';
 import 'rest_client_service.dart';
+import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
 
@@ -277,6 +278,64 @@ class ChatController extends ChangeNotifier {
             },
           },
           'required': ['url'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'ssh_execute',
+        description:
+            'Execute a command on a remote server via SSH. '
+            'Supports password and private-key authentication. '
+            'Returns the exit code, stdout, and stderr of the command. '
+            'Use this to manage servers, run diagnostics, deploy code, '
+            'check logs, or perform any remote administration task.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'host': {
+              'type': 'string',
+              'description':
+                  'The SSH server hostname or IP address (e.g. "192.168.1.10" or "myserver.example.com").',
+            },
+            'port': {
+              'type': 'integer',
+              'description': 'The SSH port. Defaults to 22.',
+            },
+            'username': {
+              'type': 'string',
+              'description': 'The SSH username to authenticate as.',
+            },
+            'password': {
+              'type': 'string',
+              'description':
+                  'The password for password-based authentication. '
+                  'Either "password" or "private_key" must be provided.',
+            },
+            'private_key': {
+              'type': 'string',
+              'description':
+                  'The PEM-encoded private key for key-based authentication. '
+                  'Either "password" or "private_key" must be provided.',
+            },
+            'passphrase': {
+              'type': 'string',
+              'description':
+                  'The passphrase to decrypt the private key, if it is encrypted.',
+            },
+            'command': {
+              'type': 'string',
+              'description': 'The shell command to execute on the remote server.',
+            },
+            'timeout_seconds': {
+              'type': 'integer',
+              'description':
+                  'Connection and execution timeout in seconds (1-120). Defaults to 30.',
+            },
+          },
+          'required': ['host', 'username', 'command'],
         },
       ),
       isSystemTool: true,
@@ -1315,6 +1374,29 @@ class ChatController extends ChangeNotifier {
           headers: headers,
           body: body,
           timeoutSeconds: timeoutSeconds,
+        );
+      case 'ssh_execute':
+        final sshHost = args['host'] as String? ?? '';
+        if (sshHost.trim().isEmpty) {
+          return 'Error: SSH host is required.';
+        }
+        final sshUsername = args['username'] as String? ?? '';
+        if (sshUsername.trim().isEmpty) {
+          return 'Error: SSH username is required.';
+        }
+        final sshCommand = args['command'] as String? ?? '';
+        if (sshCommand.trim().isEmpty) {
+          return 'Error: SSH command is required.';
+        }
+        return await SshService.execute(
+          host: sshHost,
+          port: (args['port'] as int?) ?? 22,
+          username: sshUsername,
+          password: args['password'] as String?,
+          privateKey: args['private_key'] as String?,
+          passphrase: args['passphrase'] as String?,
+          command: sshCommand,
+          timeoutSeconds: (args['timeout_seconds'] as int?) ?? 30,
         );
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);

@@ -14,6 +14,7 @@ dependencies:
   # Networking
   http: ^1.6.0
   html: ^0.15.5
+  dartssh2: ^2.10.0
 
   # State & Storage
   shared_preferences: ^2.5.5

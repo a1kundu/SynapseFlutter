@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -347,15 +348,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
-        // Messages list
-        Expanded(
+        // Messages list – fills entire area, scrolls behind input bar
+        Positioned.fill(
           child: _ctrl.messages.isEmpty
               ? _EmptyState(modelName: _ctrl.selectedModel?.displayName)
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.only(top: 8, bottom: 120),
                   itemCount: _ctrl.messages.length,
                   itemBuilder: (context, index) {
                     return _MessageBubble(
@@ -371,25 +372,36 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
         ),
 
-        // Pending attachments preview
-        if (_ctrl.pendingAttachments.isNotEmpty)
-          _AttachmentPreviewBar(
-            attachments: _ctrl.pendingAttachments,
-            onRemove: _ctrl.removeAttachment,
-          ),
+        // Bottom-aligned input area (overlays messages)
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pending attachments preview
+              if (_ctrl.pendingAttachments.isNotEmpty)
+                _AttachmentPreviewBar(
+                  attachments: _ctrl.pendingAttachments,
+                  onRemove: _ctrl.removeAttachment,
+                ),
 
-        // Chat input bar with integrated tools button
-        _ChatInputBar(
-          textController: _textController,
-          focusNode: _focusNode,
-          onTextChange: _ctrl.onInputTextChange,
-          onSend: _onSend,
-          onAttach: _onAttach,
-          isGenerating: _ctrl.isGenerating,
-          onExportChat: _exportChat,
-          onCancel: _ctrl.cancelGeneration,
-          hasMessages: _ctrl.messages.isNotEmpty,
-          controller: _ctrl,
+              // Chat input bar with integrated tools button
+              _ChatInputBar(
+                textController: _textController,
+                focusNode: _focusNode,
+                onTextChange: _ctrl.onInputTextChange,
+                onSend: _onSend,
+                onAttach: _onAttach,
+                isGenerating: _ctrl.isGenerating,
+                onExportChat: _exportChat,
+                onCancel: _ctrl.cancelGeneration,
+                hasMessages: _ctrl.messages.isNotEmpty,
+                controller: _ctrl,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -2344,32 +2356,30 @@ class _ChatInputBar extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
-        child: DecoratedBox(
+        child: Container(
           decoration: BoxDecoration(
-            color: isDark
-                ? cs.surfaceContainerHigh
-                : cs.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: isDark ? 0.4 : 0.5),
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4),
             ),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.25 : 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 3),
+                color: cs.shadow.withValues(alpha: isDark ? 0.3 : 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
                 spreadRadius: -2,
-              ),
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.12 : 0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 1),
               ),
             ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(26),
-            child: Column(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: ColoredBox(
+                color: isDark
+                    ? cs.surfaceContainerHigh.withValues(alpha: 0.78)
+                    : cs.surfaceContainerLowest.withValues(alpha: 0.82),
+                child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // ── Text input area ──
@@ -2512,7 +2522,9 @@ class _ChatInputBar extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }
 

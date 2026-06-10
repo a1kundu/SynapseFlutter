@@ -29,7 +29,6 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _subAgentDialogShowing = false;
@@ -63,7 +62,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _ctrl.removeListener(_onControllerChanged);
     _ctrl.subAgentActivity.removeListener(_onSubAgentActivityChanged);
-    _scrollController.dispose();
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -196,9 +194,11 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
     if (_ctrl.messages.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
+        if (!mounted) return;
+        final sc = PrimaryScrollController.of(context);
+        if (sc.hasClients) {
+          sc.animateTo(
+            sc.position.maxScrollExtent,
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
           );
@@ -355,7 +355,6 @@ class _ChatScreenState extends State<ChatScreen> {
           child: _ctrl.messages.isEmpty
               ? _EmptyState(modelName: _ctrl.selectedModel?.displayName)
               : ListView.builder(
-                  controller: _scrollController,
                   padding: const EdgeInsets.only(top: 8, bottom: 120),
                   itemCount: _ctrl.messages.length,
                   itemBuilder: (context, index) {

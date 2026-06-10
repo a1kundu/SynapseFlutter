@@ -106,8 +106,12 @@ class _WideLayout extends StatelessWidget {
           // Main content
           Expanded(
             child: Scaffold(
-              appBar: _buildAppBar(context, controller, onOpenSettings),
-              body: ChatScreen(controller: controller),
+              body: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                  _buildSliverAppBar(context, controller, onOpenSettings),
+                ],
+                body: ChatScreen(controller: controller),
+              ),
             ),
           ),
         ],
@@ -130,8 +134,6 @@ class _NarrowLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _buildAppBar(context, controller, onOpenSettings,
-          showMenuButton: true),
       drawer: Drawer(
         child: _ChatHistoryPanel(
           controller: controller,
@@ -139,20 +141,28 @@ class _NarrowLayout extends StatelessWidget {
           isDrawer: true,
         ),
       ),
-      body: ChatScreen(controller: controller),
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          _buildSliverAppBar(context, controller, onOpenSettings,
+              showMenuButton: true),
+        ],
+        body: ChatScreen(controller: controller),
+      ),
     );
   }
 }
 
 // ── Shared App Bar ──────────────────────────────────────────────────────────
 
-AppBar _buildAppBar(
+SliverAppBar _buildSliverAppBar(
   BuildContext context,
   ChatController controller,
   VoidCallback onOpenSettings, {
   bool showMenuButton = false,
 }) {
-  return AppBar(
+  return SliverAppBar(
+    floating: true,
+    snap: true,
     toolbarHeight: 64,
     leading: showMenuButton
         ? Builder(

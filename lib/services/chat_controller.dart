@@ -1121,10 +1121,13 @@ class ChatController extends ChangeNotifier {
         : <ToolCallEntry>[];
     final allToolCallEntries = [...existingToolCalls, ...newToolCallEntries];
 
-    // Update the assistant message with tool call entries (visible in UI)
-    // Preserve any text content the LLM may have streamed before tool calls.
+    // Update the assistant message with tool call entries (visible in UI).
+    // Clear intermediate content -- it is now preserved in thinkingText on the
+    // first tool call entry of this round, so keeping it in message.content
+    // would cause it to render twice during streaming.
     _updateMessage(
       assistantId,
+      content: '',
       toolCalls: List<ToolCallEntry>.from(allToolCallEntries),
     );
 

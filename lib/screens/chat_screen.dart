@@ -2355,19 +2355,26 @@ class _ChatInputBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4),
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.6 : 0.55),
+              width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.3 : 0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 4),
-                spreadRadius: -2,
+                color: cs.shadow.withValues(alpha: isDark ? 0.5 : 0.18),
+                blurRadius: 24,
+                offset: const Offset(0, 6),
+                spreadRadius: 0,
+              ),
+              BoxShadow(
+                color: cs.shadow.withValues(alpha: isDark ? 0.25 : 0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+                spreadRadius: -1,
               ),
             ],
           ),
@@ -2377,8 +2384,8 @@ class _ChatInputBar extends StatelessWidget {
               filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
               child: ColoredBox(
                 color: isDark
-                    ? cs.surfaceContainerHigh.withValues(alpha: 0.78)
-                    : cs.surfaceContainerLowest.withValues(alpha: 0.82),
+                    ? cs.surfaceContainerHighest.withValues(alpha: 0.92)
+                    : cs.surfaceContainerHighest.withValues(alpha: 0.92),
                 child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2422,14 +2429,14 @@ class _ChatInputBar extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Divider(
                     height: 1,
-                    thickness: 0.5,
-                    color: cs.outlineVariant.withValues(alpha: 0.25),
+                    thickness: 1,
+                    color: cs.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.45),
                   ),
                 ),
 
                 // ── Action toolbar ──
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 4, 6, 6),
+                  padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
                   child: Row(
                     children: [
                       // ── Left group ──

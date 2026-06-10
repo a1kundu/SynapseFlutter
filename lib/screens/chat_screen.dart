@@ -378,39 +378,18 @@ class _ChatScreenState extends State<ChatScreen> {
             onRemove: _ctrl.removeAttachment,
           ),
 
-        // Lower section: MCP tools status + input bar
-        Builder(
-          builder: (context) {
-            final cs = Theme.of(context).colorScheme;
-            return Container(
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerLow,
-                border: Border(
-                  top: BorderSide(
-                    color: cs.outlineVariant.withValues(alpha: 0.35),
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _McpToolsStatus(controller: _ctrl),
-                  _ChatInputBar(
-                    textController: _textController,
-                    focusNode: _focusNode,
-                    onTextChange: _ctrl.onInputTextChange,
-                    onSend: _onSend,
-                    onAttach: _onAttach,
-                    isGenerating: _ctrl.isGenerating,
-                    onExportChat: _exportChat,
-                    onCancel: _ctrl.cancelGeneration,
-                    hasMessages: _ctrl.messages.isNotEmpty,
-                  ),
-                ],
-              ),
-            );
-          },
+        // Chat input bar with integrated tools button
+        _ChatInputBar(
+          textController: _textController,
+          focusNode: _focusNode,
+          onTextChange: _ctrl.onInputTextChange,
+          onSend: _onSend,
+          onAttach: _onAttach,
+          isGenerating: _ctrl.isGenerating,
+          onExportChat: _exportChat,
+          onCancel: _ctrl.cancelGeneration,
+          hasMessages: _ctrl.messages.isNotEmpty,
+          controller: _ctrl,
         ),
       ],
     );
@@ -2309,267 +2288,6 @@ class _AttachmentPreviewBar extends StatelessWidget {
   }
 }
 
-// ── MCP Tools Status with Selection ─────────────────────────────────────────
-
-class _McpToolsStatus extends StatefulWidget {
-  final ChatController controller;
-
-  const _McpToolsStatus({required this.controller});
-
-  @override
-  State<_McpToolsStatus> createState() => _McpToolsStatusState();
-}
-
-class _McpToolsStatusState extends State<_McpToolsStatus> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final ctrl = widget.controller;
-    final toolCount = ctrl.allTools.length;
-    final activeCount = ctrl.activeTools.length;
-    final error = ctrl.mcpError;
-    final isLoading = ctrl.isLoadingMcpTools;
-
-    if (!isLoading && toolCount == 0 && error == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      children: [
-        // Status bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              if (isLoading) ...[
-                SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 1.5),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Discovering MCP tools...',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                ),
-              ] else if (error != null && ctrl.mcpTools.isEmpty) ...[
-                Icon(Icons.error_outline, size: 14, color: cs.error),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'MCP error: $error',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: cs.error),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 14,
-                    icon: Icon(Icons.refresh, color: cs.error),
-                    onPressed: ctrl.refreshMcpTools,
-                  ),
-                ),
-              ] else if (toolCount > 0) ...[
-                Icon(Icons.extension_outlined, size: 14, color: cs.primary),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _expanded = !_expanded),
-                    child: Text(
-                      '$activeCount of $toolCount tool${toolCount > 1 ? 's' : ''} enabled',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.labelSmall?.copyWith(color: cs.primary),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 14,
-                    icon: Icon(
-                      _expanded ? Icons.expand_more : Icons.expand_less,
-                      color: cs.primary,
-                    ),
-                    onPressed: () => setState(() => _expanded = !_expanded),
-                  ),
-                ),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 14,
-                    icon: Icon(Icons.refresh, color: cs.primary),
-                    onPressed: ctrl.refreshMcpTools,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-
-        // Expanded tool selection
-        if (_expanded && toolCount > 0)
-          Container(
-            constraints: const BoxConstraints(maxHeight: 200),
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: cs.secondaryContainer,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: cs.secondary.withValues(alpha: 0.4),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.4),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Select all / none buttons
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Tool Selection',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSecondaryContainer,
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: ctrl.enableAllTools,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          'All',
-                          style: TextStyle(fontSize: 11, color: cs.primary),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: ctrl.disableAllTools,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          'None',
-                          style: TextStyle(fontSize: 11, color: cs.primary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Tool list
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.only(bottom: 4),
-                    itemCount: ctrl.allTools.length,
-                    itemBuilder: (context, index) {
-                      final tool = ctrl.allTools[index];
-                      final isEnabled = ctrl.activeTools.any(
-                        (t) => t.tool.name == tool.tool.name,
-                      );
-                      return InkWell(
-                        onTap: () => ctrl.toggleTool(tool.tool.name),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: Checkbox(
-                                  value: isEnabled,
-                                  onChanged: (_) =>
-                                      ctrl.toggleTool(tool.tool.name),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      tool.tool.name,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: cs.onSurface,
-                                      ),
-                                    ),
-                                    if (tool.tool.description != null)
-                                      Text(
-                                        tool.tool.description!,
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: cs.onSurfaceVariant,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                tool.isSystemTool ? 'System' : tool.serverName,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: cs.onSurfaceVariant.withValues(
-                                    alpha: 0.6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 // ── Chat Input Bar ──────────────────────────────────────────────────────────
 
 class _ChatInputBar extends StatelessWidget {
@@ -2582,6 +2300,7 @@ class _ChatInputBar extends StatelessWidget {
   final VoidCallback onExportChat;
   final VoidCallback onCancel;
   final bool hasMessages;
+  final ChatController controller;
 
   const _ChatInputBar({
     required this.textController,
@@ -2593,13 +2312,33 @@ class _ChatInputBar extends StatelessWidget {
     required this.onExportChat,
     required this.onCancel,
     required this.hasMessages,
+    required this.controller,
   });
+
+  void _showToolsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ListenableBuilder(
+        listenable: controller,
+        builder: (ctx, __) => _ToolsBottomSheet(controller: controller),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasText = textController.text.trim().isNotEmpty;
+    final toolCount = controller.allTools.length;
+    final activeCount = controller.activeTools.length;
+    final isLoadingTools = controller.isLoadingMcpTools;
+    final hasToolsError =
+        controller.mcpError != null && controller.allTools.isEmpty;
+    final showToolsButton =
+        isLoadingTools || toolCount > 0 || controller.mcpError != null;
 
     return SafeArea(
       top: false,
@@ -2683,65 +2422,87 @@ class _ChatInputBar extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(4, 4, 6, 6),
                   child: Row(
                     children: [
-                      // Attach file
-                      _InputToolbarButton(
-                        icon: Icons.attach_file_rounded,
-                        tooltip: 'Attach file',
-                        onPressed: onAttach,
+                      // ── Left group ──
+                      Expanded(
+                        child: Row(
+                          children: [
+                            _InputToolbarButton(
+                              icon: Icons.attach_file_rounded,
+                              tooltip: 'Attach file',
+                              onPressed: onAttach,
+                            ),
+                            if (hasMessages)
+                              _InputToolbarButton(
+                                icon: Icons.download_rounded,
+                                tooltip: 'Export chat as JSON',
+                                onPressed: onExportChat,
+                              ),
+                          ],
+                        ),
                       ),
 
-                      // Export chat
-                      if (hasMessages)
-                        _InputToolbarButton(
-                          icon: Icons.download_rounded,
-                          tooltip: 'Export chat as JSON',
-                          onPressed: onExportChat,
+                      // ── Center – Tools split button ──
+                      if (showToolsButton)
+                        _ToolsSplitButton(
+                          toolCount: toolCount,
+                          activeCount: activeCount,
+                          isLoading: isLoadingTools,
+                          hasError: hasToolsError,
+                          onTap: () => _showToolsSheet(context),
+                          onRefresh: controller.refreshMcpTools,
                         ),
 
-                      const Spacer(),
-
-                      // Send / Stop button
-                      SizedBox(
-                        width: 38,
-                        height: 38,
-                        child: isGenerating
-                            ? Material(
-                                color: cs.errorContainer,
-                                shape: const CircleBorder(),
-                                clipBehavior: Clip.antiAlias,
-                                child: InkWell(
-                                  onTap: onCancel,
-                                  customBorder: const CircleBorder(),
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.stop_rounded,
-                                      size: 22,
-                                      color: cs.onErrorContainer,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : Material(
-                                color: hasText
-                                    ? cs.primary
-                                    : cs.onSurface.withValues(alpha: 0.08),
-                                shape: const CircleBorder(),
-                                clipBehavior: Clip.antiAlias,
-                                child: InkWell(
-                                  onTap: hasText ? onSend : null,
-                                  customBorder: const CircleBorder(),
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.arrow_upward_rounded,
-                                      size: 22,
+                      // ── Right group ──
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            // Send / Stop button
+                            SizedBox(
+                              width: 38,
+                              height: 38,
+                              child: isGenerating
+                                  ? Material(
+                                      color: cs.errorContainer,
+                                      shape: const CircleBorder(),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        onTap: onCancel,
+                                        customBorder: const CircleBorder(),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.stop_rounded,
+                                            size: 22,
+                                            color: cs.onErrorContainer,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : Material(
                                       color: hasText
-                                          ? cs.onPrimary
-                                          : cs.onSurface
-                                              .withValues(alpha: 0.25),
+                                          ? cs.primary
+                                          : cs.onSurface.withValues(
+                                              alpha: 0.08),
+                                      shape: const CircleBorder(),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        onTap: hasText ? onSend : null,
+                                        customBorder: const CircleBorder(),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.arrow_upward_rounded,
+                                            size: 22,
+                                            color: hasText
+                                                ? cs.onPrimary
+                                                : cs.onSurface.withValues(
+                                                    alpha: 0.25),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -2784,6 +2545,320 @@ class _InputToolbarButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Tools Split Button ──────────────────────────────────────────────────────
+
+class _ToolsSplitButton extends StatelessWidget {
+  final int toolCount;
+  final int activeCount;
+  final bool isLoading;
+  final bool hasError;
+  final VoidCallback onTap;
+  final VoidCallback onRefresh;
+
+  const _ToolsSplitButton({
+    required this.toolCount,
+    required this.activeCount,
+    required this.isLoading,
+    required this.hasError,
+    required this.onTap,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(
+          color: cs.outline.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Main area – opens bottom sheet ──
+          GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isLoading)
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    )
+                  else if (hasError)
+                    Icon(Icons.error_outline, size: 14, color: cs.error)
+                  else
+                    Icon(
+                      Icons.extension_rounded,
+                      size: 14,
+                      color: cs.primary,
+                    ),
+                  const SizedBox(width: 5),
+                  if (isLoading)
+                    Text(
+                      'Loading\u2026',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    )
+                  else if (hasError)
+                    Text(
+                      'Error',
+                      style: TextStyle(fontSize: 11, color: cs.error),
+                    )
+                  else
+                    Text(
+                      '$activeCount/$toolCount',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                      ),
+                    ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Divider ──
+          Container(
+            width: 1,
+            height: 20,
+            color: cs.outline.withValues(alpha: 0.25),
+          ),
+
+          // ── Refresh split ──
+          InkWell(
+            onTap: isLoading ? null : onRefresh,
+            borderRadius: const BorderRadius.horizontal(
+              right: Radius.circular(17),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: isLoading
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: cs.primary,
+                      ),
+                    )
+                  : Icon(
+                      Icons.refresh,
+                      size: 16,
+                      color: cs.onSurfaceVariant,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Tools Bottom Sheet ──────────────────────────────────────────────────────
+
+class _ToolsBottomSheet extends StatelessWidget {
+  final ChatController controller;
+
+  const _ToolsBottomSheet({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final allTools = controller.allTools;
+    final activeTools = controller.activeTools;
+    final error = controller.mcpError;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.55,
+      ),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Drag handle ──
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // ── Header row ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 12, 4),
+            child: Row(
+              children: [
+                Icon(Icons.extension_rounded, size: 20, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Tools',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${activeTools.length}/${allTools.length} active',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: controller.enableAllTools,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('All', style: TextStyle(fontSize: 12)),
+                ),
+                TextButton(
+                  onPressed: controller.disableAllTools,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('None', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+
+          Divider(
+            height: 1,
+            color: cs.outlineVariant.withValues(alpha: 0.3),
+          ),
+
+          // ── Error banner ──
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: cs.error,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      error,
+                      style: TextStyle(fontSize: 12, color: cs.error),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // ── Tool list ──
+          Flexible(
+            child: allTools.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Text(
+                        'No tools discovered yet',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 16, top: 4),
+                    itemCount: allTools.length,
+                    itemBuilder: (context, index) {
+                      final tool = allTools[index];
+                      final isEnabled = activeTools.any(
+                        (t) => t.tool.name == tool.tool.name,
+                      );
+                      return ListTile(
+                        dense: true,
+                        visualDensity:
+                            const VisualDensity(vertical: -2),
+                        leading: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Checkbox(
+                            value: isEnabled,
+                            onChanged: (_) =>
+                                controller.toggleTool(tool.tool.name),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        title: Text(
+                          tool.tool.name,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        subtitle: tool.tool.description != null
+                            ? Text(
+                                tool.tool.description!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11),
+                              )
+                            : null,
+                        trailing: Text(
+                          tool.isSystemTool ? 'System' : tool.serverName,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: cs.onSurfaceVariant
+                                .withValues(alpha: 0.6),
+                          ),
+                        ),
+                        onTap: () =>
+                            controller.toggleTool(tool.tool.name),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

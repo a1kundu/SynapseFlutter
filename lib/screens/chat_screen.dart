@@ -1782,38 +1782,170 @@ class _ToolCallSteps extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // Group tool calls by round.
+    final rounds = <int, List<ToolCallEntry>>{};
+    for (final entry in toolCalls) {
+      rounds.putIfAbsent(entry.round, () => []).add(entry);
+    }
+    final sortedRounds = rounds.keys.toList()..sort();
+    final hasMultipleRounds = sortedRounds.length > 1;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: toolCalls.map((entry) {
-        final isSubAgent = entry.toolName == 'delegate_to_agent';
-        final IconData icon;
-        final Color iconColor;
-        switch (entry.status) {
-          case ToolCallStatus.running:
-            icon = isSubAgent
-                ? Icons.smart_toy_outlined
-                : Icons.hourglass_top_rounded;
-            iconColor = isSubAgent ? cs.primary : cs.tertiary;
-          case ToolCallStatus.completed:
-            icon = isSubAgent
-                ? Icons.smart_toy_rounded
-                : Icons.check_circle_outline_rounded;
-            iconColor = Colors.green;
-          case ToolCallStatus.error:
-            icon = isSubAgent
-                ? Icons.smart_toy_outlined
-                : Icons.error_outline_rounded;
-            iconColor = cs.error;
-        }
-        return _ToolCallTile(
-          entry: entry,
-          icon: icon,
-          iconColor: iconColor,
-          contentColor: contentColor,
-          isSubAgent: isSubAgent,
-          onSubAgentTap: isSubAgent ? onSubAgentTap : null,
-        );
-      }).toList(),
+      children: [
+        for (final round in sortedRounds) ...[
+          // Collapsible thinking text (from first entry of this round)
+          if (rounds[round]!.first.thinkingText.isNotEmpty)
+            _ThinkingTextCollapse(
+              text: rounds[round]!.first.thinkingText,
+              contentColor: contentColor,
+            ),
+          // Round header (only when multiple rounds exist)
+          if (hasMultipleRounds)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.subdirectory_arrow_right_rounded,
+                      size: 12,
+                      color: cs.outline.withValues(alpha: 0.5)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Round $round',
+                    style:
+                        Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: cs.outline.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Divider(
+                      height: 1,
+                      thickness: 0.5,
+                      color: cs.outlineVariant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Tool call tiles for this round
+          ...rounds[round]!.map((entry) {
+            final isSubAgent = entry.toolName == 'delegate_to_agent';
+            final IconData icon;
+            final Color iconColor;
+            switch (entry.status) {
+              case ToolCallStatus.running:
+                icon = isSubAgent
+                    ? Icons.smart_toy_outlined
+                    : Icons.hourglass_top_rounded;
+                iconColor = isSubAgent ? cs.primary : cs.tertiary;
+              case ToolCallStatus.completed:
+                icon = isSubAgent
+                    ? Icons.smart_toy_rounded
+                    : Icons.check_circle_outline_rounded;
+                iconColor = Colors.green;
+              case ToolCallStatus.error:
+                icon = isSubAgent
+                    ? Icons.smart_toy_outlined
+                    : Icons.error_outline_rounded;
+                iconColor = cs.error;
+              case ToolCallStatus.cancelled:
+                icon = isSubAgent
+                    ? Icons.smart_toy_outlined
+                    : Icons.cancel_outlined;
+                iconColor = Colors.orange;
+            }
+            return _ToolCallTile(
+              entry: entry,
+              icon: icon,
+              iconColor: iconColor,
+              contentColor: contentColor,
+              isSubAgent: isSubAgent,
+              onSubAgentTap: isSubAgent ? onSubAgentTap : null,
+            );
+          }),
+        ],
+      ],
+    );
+  }
+}
+
+/// Collapsible section showing text the model streamed before tool calls.
+class _ThinkingTextCollapse extends StatefulWidget {
+  final String text;
+  final Color contentColor;
+
+  const _ThinkingTextCollapse({
+    required this.text,
+    required this.contentColor,
+  });
+
+  @override
+  State<_ThinkingTextCollapse> createState() => _ThinkingTextCollapseState();
+}
+
+class _ThinkingTextCollapseState extends State<_ThinkingTextCollapse> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final truncated = widget.text.length > 60
+        ? '${widget.text.substring(0, 60)}...'
+        : widget.text;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        onTap: () => setState(() => _expanded = !_expanded),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(Icons.psychology_outlined,
+                    size: 14,
+                    color: cs.outline.withValues(alpha: 0.6)),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _expanded ? widget.text : truncated,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: widget.contentColor.withValues(alpha: 0.6),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 14,
+                  color: cs.outline.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

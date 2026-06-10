@@ -78,7 +78,7 @@ class ChatAttachment {
 enum MessageRole { user, assistant }
 
 /// Status of a tool call execution.
-enum ToolCallStatus { running, completed, error }
+enum ToolCallStatus { running, completed, error, cancelled }
 
 /// Represents a single tool call with its arguments and result.
 class ToolCallEntry {
@@ -87,6 +87,11 @@ class ToolCallEntry {
   final String arguments;
   String result;
   ToolCallStatus status;
+  /// Which tool-calling round this entry belongs to (1-indexed).
+  final int round;
+  /// Text the model streamed before emitting this round's tool calls.
+  /// Only set on the first entry of each round to avoid duplication.
+  final String thinkingText;
 
   ToolCallEntry({
     required this.id,
@@ -94,6 +99,8 @@ class ToolCallEntry {
     required this.arguments,
     this.result = '',
     this.status = ToolCallStatus.running,
+    this.round = 0,
+    this.thinkingText = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -102,6 +109,8 @@ class ToolCallEntry {
         'arguments': arguments,
         'result': result,
         'status': status.name,
+        'round': round,
+        if (thinkingText.isNotEmpty) 'thinkingText': thinkingText,
       };
 
   factory ToolCallEntry.fromJson(Map<String, dynamic> json) => ToolCallEntry(
@@ -113,6 +122,8 @@ class ToolCallEntry {
           (s) => s.name == json['status'],
           orElse: () => ToolCallStatus.completed,
         ),
+        round: json['round'] as int? ?? 0,
+        thinkingText: json['thinkingText'] as String? ?? '',
       );
 }
 

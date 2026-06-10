@@ -1063,6 +1063,7 @@ class ChatController extends ChangeNotifier {
               mcpToolsList,
               openAiTools,
               currentRound: currentRound + 1,
+              thinkingText: builder.toString(),
             );
           } else if (builder.isEmpty) {
             _updateMessage(
@@ -1078,6 +1079,11 @@ class ChatController extends ChangeNotifier {
           );
       }
     }
+
+    // Mark any still-running tool calls as cancelled when the user cancels.
+    if (_cancelled) {
+      _markRunningToolCallsAsCancelled(assistantId);
+    }
   }
 
   Future<void> _handleToolCalls(
@@ -1088,17 +1094,24 @@ class ChatController extends ChangeNotifier {
     List<McpServerTool> tools,
     List<OpenAiTool>? openAiTools, {
     int currentRound = 1,
+    String thinkingText = '',
   }) async {
-    // Create ToolCallEntry list for UI display
-    final newToolCallEntries = toolCalls
-        .where((tc) => tc.function.name.isNotEmpty)
-        .map((tc) => ToolCallEntry(
-              id: tc.id,
-              toolName: tc.function.name,
-              arguments: tc.function.arguments,
-              status: ToolCallStatus.running,
-            ))
-        .toList();
+    // Create ToolCallEntry list for UI display.
+    // Set round on every entry; thinkingText only on the first entry.
+    final filteredCalls =
+        toolCalls.where((tc) => tc.function.name.isNotEmpty).toList();
+    final newToolCallEntries = <ToolCallEntry>[];
+    for (int i = 0; i < filteredCalls.length; i++) {
+      final tc = filteredCalls[i];
+      newToolCallEntries.add(ToolCallEntry(
+        id: tc.id,
+        toolName: tc.function.name,
+        arguments: tc.function.arguments,
+        status: ToolCallStatus.running,
+        round: currentRound,
+        thinkingText: i == 0 ? thinkingText.trim() : '',
+      ));
+    }
 
     // Preserve tool call entries from previous rounds so they remain visible
     // in the UI, and append the new round's entries.
@@ -1117,6 +1130,8 @@ class ChatController extends ChangeNotifier {
 
     // Execute each tool call and update entries progressively
     for (int i = 0; i < toolCalls.length; i++) {
+      if (_cancelled) break;
+
       final call = toolCalls[i];
       final toolName = call.function.name;
       if (toolName.isEmpty) continue;
@@ -1150,7 +1165,7 @@ class ChatController extends ChangeNotifier {
         resultContent = "Error: Tool '$toolName' not found";
       }
 
-      // Update the entry with result
+      // Update the entry with result, preserving round and thinkingText.
       final entryIdx = allToolCallEntries.indexWhere((e) => e.id == call.id);
       if (entryIdx >= 0) {
         allToolCallEntries[entryIdx].result = resultContent;
@@ -1168,10 +1183,18 @@ class ChatController extends ChangeNotifier {
                 arguments: e.arguments,
                 result: e.result,
                 status: e.status,
+                round: e.round,
+                thinkingText: e.thinkingText,
               ),
           ],
         );
       }
+    }
+
+    // If cancelled mid-execution, mark remaining running entries and stop.
+    if (_cancelled) {
+      _markRunningToolCallsAsCancelled(assistantId);
+      return;
     }
 
     // Build proper OpenAI-compatible conversation history:
@@ -1398,6 +1421,27 @@ class ChatController extends ChangeNotifier {
       }
       notifyListeners();
     }
+  }
+
+  /// Mark any tool calls still in [ToolCallStatus.running] as cancelled.
+  void _markRunningToolCallsAsCancelled(String assistantId) {
+    final idx = messages.indexWhere((m) => m.id == assistantId);
+    if (idx < 0 || messages[idx].toolCalls.isEmpty) return;
+    final updated = messages[idx].toolCalls.map((e) {
+      if (e.status == ToolCallStatus.running) {
+        return ToolCallEntry(
+          id: e.id,
+          toolName: e.toolName,
+          arguments: e.arguments,
+          result: 'Cancelled',
+          status: ToolCallStatus.cancelled,
+          round: e.round,
+          thinkingText: e.thinkingText,
+        );
+      }
+      return e;
+    }).toList();
+    _updateMessage(assistantId, toolCalls: updated);
   }
 
   void clearConversation() {

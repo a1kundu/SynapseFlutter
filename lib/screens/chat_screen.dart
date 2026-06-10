@@ -2553,9 +2553,7 @@ class _InputToolbarButton extends StatelessWidget {
         color: cs.onSurfaceVariant.withValues(alpha: 0.7),
         tooltip: tooltip,
         style: IconButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: const CircleBorder(),
         ),
       ),
     );
@@ -2626,7 +2624,7 @@ class _ToolsSplitButton extends StatelessWidget {
                   const SizedBox(width: 5),
                   if (isLoading)
                     Text(
-                      'Loading\u2026',
+                      'Loading Tools\u2026',
                       style: TextStyle(
                         fontSize: 11,
                         color: cs.onSurfaceVariant,
@@ -2634,12 +2632,12 @@ class _ToolsSplitButton extends StatelessWidget {
                     )
                   else if (hasError)
                     Text(
-                      'Error',
+                      'Error in Tools',
                       style: TextStyle(fontSize: 11, color: cs.error),
                     )
                   else
                     Text(
-                      '$activeCount/$toolCount',
+                      'Tools $activeCount/$toolCount',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -2648,7 +2646,7 @@ class _ToolsSplitButton extends StatelessWidget {
                     ),
                   const SizedBox(width: 2),
                   Icon(
-                    Icons.keyboard_arrow_down_rounded,
+                    Icons.keyboard_arrow_up_rounded,
                     size: 16,
                     color: cs.onSurfaceVariant,
                   ),
@@ -2756,20 +2754,27 @@ class _ToolsBottomSheet extends StatelessWidget {
                 TextButton(
                   onPressed: controller.enableAllTools,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    minimumSize: const Size(48, 34),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text('All', style: TextStyle(fontSize: 12)),
+                  child: const Text('All', style: TextStyle(fontSize: 13)),
                 ),
+                const SizedBox(width: 4),
                 TextButton(
                   onPressed: controller.disableAllTools,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    minimumSize: const Size(48, 34),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text('None', style: TextStyle(fontSize: 12)),
+                  child: const Text('None', style: TextStyle(fontSize: 13)),
                 ),
               ],
             ),

@@ -1447,17 +1447,6 @@ class ChatController extends ChangeNotifier {
     _updateMessage(assistantId, toolCalls: updated);
   }
 
-  void clearConversation() {
-    messages.clear();
-    pendingAttachments.clear();
-    inputText = '';
-    _luaExecutor.resetState();
-    if (activeSession != null) {
-      _storage.saveMessages(activeSession!.id, []);
-    }
-    notifyListeners();
-  }
-
   String _weekday(int wd) {
     const days = [
       'Monday',

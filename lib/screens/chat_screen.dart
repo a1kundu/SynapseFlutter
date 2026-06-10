@@ -403,7 +403,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     onSend: _onSend,
                     onAttach: _onAttach,
                     isGenerating: _ctrl.isGenerating,
-                    onClearChat: _ctrl.clearConversation,
                     onExportChat: _exportChat,
                     onCancel: _ctrl.cancelGeneration,
                     hasMessages: _ctrl.messages.isNotEmpty,
@@ -2540,7 +2539,6 @@ class _ChatInputBar extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onAttach;
   final bool isGenerating;
-  final VoidCallback onClearChat;
   final VoidCallback onExportChat;
   final VoidCallback onCancel;
   final bool hasMessages;
@@ -2552,7 +2550,6 @@ class _ChatInputBar extends StatelessWidget {
     required this.onSend,
     required this.onAttach,
     required this.isGenerating,
-    required this.onClearChat,
     required this.onExportChat,
     required this.onCancel,
     required this.hasMessages,
@@ -2629,22 +2626,6 @@ class _ChatInputBar extends StatelessWidget {
                   ),
                 ),
 
-                // Clear chat button
-                if (hasMessages)
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      iconSize: 20,
-                      icon: Icon(
-                        Icons.delete_sweep_outlined,
-                        color: cs.onSurfaceVariant,
-                      ),
-                      onPressed: onClearChat,
-                      tooltip: 'Clear chat',
-                    ),
-                  ),
 
                 // Export chat button
                 if (hasMessages)

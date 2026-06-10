@@ -1020,7 +1020,7 @@ class ChatController extends ChangeNotifier {
   }
 
   /// Maximum number of tool-calling rounds before forcing a final text response.
-  static const int _maxToolRounds = 10;
+  static const int _maxToolRounds = 100;
 
   Future<void> _streamWithToolCalling(
     String assistantId,

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' show pi;
+import 'dart:math' show max, pi;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -2422,10 +2422,18 @@ class _ChatInputBarState extends State<_ChatInputBar>
     final showToolsButton =
         isLoadingTools || toolCount > 0 || widget.controller.mcpError != null;
 
+    // Use symmetric horizontal padding so the input box stays centered
+    // in landscape mode (where system bars cause asymmetric safe-area insets).
+    final viewPadding = MediaQuery.of(context).padding;
+    final horizontalInset = max(viewPadding.left, viewPadding.right);
+    final hPad = 16.0 + horizontalInset;
+
     return SafeArea(
       top: false,
+      left: false,
+      right: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+        padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 10),
         child: AnimatedBuilder(
           animation: _gradientController,
           builder: (context, _) {

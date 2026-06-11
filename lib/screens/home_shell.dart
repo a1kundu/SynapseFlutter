@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show max;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/chat_session.dart';
@@ -94,6 +95,12 @@ class _WideLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Make horizontal safe-area insets symmetric so the app bar and content
+    // stay centered in landscape (system bars cause asymmetric insets).
+    final mq = MediaQuery.of(context);
+    final sysPadding = mq.padding;
+    final symH = max(sysPadding.left, sysPadding.right);
+
     return Scaffold(
       body: Row(
         children: [
@@ -109,12 +116,17 @@ class _WideLayout extends StatelessWidget {
           // Main content
           Expanded(
             child: Scaffold(
-              body: NestedScrollView(
-                floatHeaderSlivers: true,
-                headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                  _buildSliverAppBar(context, controller, onOpenSettings),
-                ],
-                body: ChatScreen(controller: controller),
+              body: MediaQuery(
+                data: mq.copyWith(
+                  padding: sysPadding.copyWith(left: symH, right: symH),
+                ),
+                child: NestedScrollView(
+                  floatHeaderSlivers: true,
+                  headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                    _buildSliverAppBar(context, controller, onOpenSettings),
+                  ],
+                  body: ChatScreen(controller: controller),
+                ),
               ),
             ),
           ),
@@ -137,6 +149,12 @@ class _NarrowLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Make horizontal safe-area insets symmetric so the app bar and content
+    // stay centered in landscape (system bars cause asymmetric insets).
+    final mq = MediaQuery.of(context);
+    final sysPadding = mq.padding;
+    final symH = max(sysPadding.left, sysPadding.right);
+
     return Scaffold(
       drawer: Drawer(
         child: _ChatHistoryPanel(
@@ -145,13 +163,18 @@ class _NarrowLayout extends StatelessWidget {
           isDrawer: true,
         ),
       ),
-      body: NestedScrollView(
-        floatHeaderSlivers: true,
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          _buildSliverAppBar(context, controller, onOpenSettings,
-              showMenuButton: true),
-        ],
-        body: ChatScreen(controller: controller),
+      body: MediaQuery(
+        data: mq.copyWith(
+          padding: sysPadding.copyWith(left: symH, right: symH),
+        ),
+        child: NestedScrollView(
+          floatHeaderSlivers: true,
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            _buildSliverAppBar(context, controller, onOpenSettings,
+                showMenuButton: true),
+          ],
+          body: ChatScreen(controller: controller),
+        ),
       ),
     );
   }

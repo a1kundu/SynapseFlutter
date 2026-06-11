@@ -1045,7 +1045,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
               constraints: BoxConstraints(
                 minWidth: 60,
                 maxWidth: isUser
-                    ? 340
+                    ? MediaQuery.of(context).size.width * 0.75
                     : MediaQuery.of(context).size.width,
               ),
               decoration: BoxDecoration(
@@ -2152,6 +2152,7 @@ class _CopyableSection extends StatelessWidget {
 
 // ── Streaming Indicator ─────────────────────────────────────────────────────
 
+/// Animated bouncing dots indicator shown while the assistant is streaming.
 class _StreamingIndicator extends StatefulWidget {
   final Color tint;
 
@@ -2164,19 +2165,14 @@ class _StreamingIndicator extends StatefulWidget {
 class _StreamingIndicatorState extends State<_StreamingIndicator>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..repeat(reverse: true);
-    _animation = Tween<double>(
-      begin: 0.3,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.linear));
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
   }
 
   @override
@@ -2187,18 +2183,40 @@ class _StreamingIndicatorState extends State<_StreamingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
-          width: 2,
-          height: 14,
-          decoration: BoxDecoration(
-            color: widget.tint.withValues(alpha: _animation.value),
-            borderRadius: BorderRadius.circular(1),
-          ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (index) {
+        // Stagger each dot by 0.2 of the animation cycle
+        final delay = index * 0.2;
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            // Compute a per-dot phase that bounces up then back down
+            final t = (_controller.value - delay).clamp(0.0, 1.0);
+            // Use a sin-based curve for smooth bounce (active in 0..0.5 range)
+            final bounce = t < 0.5
+                ? Curves.easeOutCubic.transform(t * 2.0)  // rise
+                : Curves.easeInCubic.transform(2.0 - t * 2.0);  // fall
+            final opacity = 0.3 + 0.7 * bounce;
+            final yOffset = -3.0 * bounce;
+
+            return Container(
+              margin: EdgeInsets.only(right: index < 2 ? 3 : 0),
+              child: Transform.translate(
+                offset: Offset(0, yOffset),
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: widget.tint.withValues(alpha: opacity),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          },
         );
-      },
+      }),
     );
   }
 }
@@ -2459,49 +2477,63 @@ class _ChatInputBar extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            // Send / Stop button
+                            // Send / Stop button with animated transitions
                             SizedBox(
                               width: 38,
                               height: 38,
-                              child: isGenerating
-                                  ? Material(
-                                      color: cs.errorContainer,
-                                      shape: const CircleBorder(),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: InkWell(
-                                        onTap: onCancel,
-                                        customBorder: const CircleBorder(),
-                                        child: Center(
-                                          child: Icon(
-                                            Icons.stop_rounded,
-                                            size: 22,
-                                            color: cs.onErrorContainer,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  : Material(
-                                      color: hasText
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeOutCubic,
+                                decoration: ShapeDecoration(
+                                  color: isGenerating
+                                      ? cs.errorContainer
+                                      : hasText
                                           ? cs.primary
-                                          : cs.onSurface.withValues(
-                                              alpha: 0.08),
-                                      shape: const CircleBorder(),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: InkWell(
-                                        onTap: hasText ? onSend : null,
-                                        customBorder: const CircleBorder(),
-                                        child: Center(
-                                          child: Icon(
-                                            Icons.arrow_upward_rounded,
-                                            size: 22,
-                                            color: hasText
-                                                ? cs.onPrimary
-                                                : cs.onSurface.withValues(
-                                                    alpha: 0.25),
-                                          ),
-                                        ),
+                                          : cs.onSurface.withValues(alpha: 0.08),
+                                  shape: const CircleBorder(),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  shape: const CircleBorder(),
+                                  child: InkWell(
+                                    onTap: isGenerating
+                                        ? onCancel
+                                        : hasText ? onSend : null,
+                                    customBorder: const CircleBorder(),
+                                    child: Center(
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(milliseconds: 200),
+                                        switchInCurve: Curves.easeOutCubic,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        transitionBuilder: (child, animation) =>
+                                            ScaleTransition(
+                                              scale: animation,
+                                              child: FadeTransition(
+                                                opacity: animation,
+                                                child: child,
+                                              ),
+                                            ),
+                                        child: isGenerating
+                                            ? Icon(
+                                                Icons.stop_rounded,
+                                                key: const ValueKey('stop'),
+                                                size: 22,
+                                                color: cs.onErrorContainer,
+                                              )
+                                            : Icon(
+                                                Icons.arrow_upward_rounded,
+                                                key: ValueKey(hasText ? 'send_active' : 'send_inactive'),
+                                                size: 22,
+                                                color: hasText
+                                                    ? cs.onPrimary
+                                                    : cs.onSurface.withValues(alpha: 0.25),
+                                              ),
                                       ),
                                     ),
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' show pi;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -2305,7 +2306,7 @@ class _AttachmentPreviewBar extends StatelessWidget {
 
 // ── Chat Input Bar ──────────────────────────────────────────────────────────
 
-class _ChatInputBar extends StatelessWidget {
+class _ChatInputBar extends StatefulWidget {
   final TextEditingController textController;
   final FocusNode focusNode;
   final ValueChanged<String> onTextChange;
@@ -2330,14 +2331,49 @@ class _ChatInputBar extends StatelessWidget {
     required this.controller,
   });
 
+  @override
+  State<_ChatInputBar> createState() => _ChatInputBarState();
+}
+
+class _ChatInputBarState extends State<_ChatInputBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _gradientController;
+
+  @override
+  void initState() {
+    super.initState();
+    _gradientController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    );
+    if (widget.isGenerating) _gradientController.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_ChatInputBar old) {
+    super.didUpdateWidget(old);
+    if (widget.isGenerating && !old.isGenerating) {
+      _gradientController.repeat();
+    } else if (!widget.isGenerating && old.isGenerating) {
+      _gradientController.stop();
+      _gradientController.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _gradientController.dispose();
+    super.dispose();
+  }
+
   void _showToolsSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => ListenableBuilder(
-        listenable: controller,
-        builder: (ctx, __) => _ToolsBottomSheet(controller: controller),
+        listenable: widget.controller,
+        builder: (ctx, __) => _ToolsBottomSheet(controller: widget.controller),
       ),
     );
   }
@@ -2346,210 +2382,308 @@ class _ChatInputBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasText = textController.text.trim().isNotEmpty;
-    final toolCount = controller.allTools.length;
-    final activeCount = controller.activeTools.length;
-    final isLoadingTools = controller.isLoadingMcpTools;
+    final hasText = widget.textController.text.trim().isNotEmpty;
+    final toolCount = widget.controller.allTools.length;
+    final activeCount = widget.controller.activeTools.length;
+    final isLoadingTools = widget.controller.isLoadingMcpTools;
     final hasToolsError =
-        controller.mcpError != null && controller.allTools.isEmpty;
+        widget.controller.mcpError != null && widget.controller.allTools.isEmpty;
     final showToolsButton =
-        isLoadingTools || toolCount > 0 || controller.mcpError != null;
+        isLoadingTools || toolCount > 0 || widget.controller.mcpError != null;
 
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: isDark ? 0.6 : 0.55),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.5 : 0.18),
-                blurRadius: 24,
-                offset: const Offset(0, 6),
-                spreadRadius: 0,
-              ),
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.25 : 0.08),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-                spreadRadius: -1,
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-              child: ColoredBox(
-                color: isDark
-                    ? cs.surfaceContainerHighest.withValues(alpha: 0.92)
-                    : cs.surfaceContainerHighest.withValues(alpha: 0.92),
-                child: Column(
-              mainAxisSize: MainAxisSize.min,
+        child: AnimatedBuilder(
+          animation: _gradientController,
+          builder: (context, _) {
+            return Stack(
               children: [
-                // ── Text input area ──
-                TextField(
-                  controller: textController,
-                  focusNode: focusNode,
-                  autofocus: false,
-                  onChanged: onTextChange,
-                  onSubmitted: (_) {
-                    if (hasText && !isGenerating) onSend();
-                  },
-                  minLines: 1,
-                  maxLines: 8,
-                  textInputAction: TextInputAction.newline,
-                  decoration: InputDecoration(
-                    hintText: isGenerating
-                        ? 'Generating\u2026 tap stop to cancel'
-                        : 'Message Synapse\u2026',
-                    hintStyle: TextStyle(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.45),
-                      fontWeight: FontWeight.w400,
-                      fontSize: 15,
+                // Main content container
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(26),
+                    // Hide static border during generation (gradient replaces it)
+                    border: widget.isGenerating
+                        ? Border.all(color: Colors.transparent, width: 1.2)
+                        : Border.all(
+                            color: cs.outlineVariant
+                                .withValues(alpha: isDark ? 0.6 : 0.55),
+                            width: 1.2,
+                          ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.shadow.withValues(alpha: isDark ? 0.5 : 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 6),
+                        spreadRadius: 0,
+                      ),
+                      BoxShadow(
+                        color:
+                            cs.shadow.withValues(alpha: isDark ? 0.25 : 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                        spreadRadius: -1,
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(26),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                      child: ColoredBox(
+                        color: isDark
+                            ? cs.surfaceContainerHighest
+                                .withValues(alpha: 0.92)
+                            : cs.surfaceContainerHighest
+                                .withValues(alpha: 0.92),
+                        child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Text input area ──
+                    TextField(
+                      controller: widget.textController,
+                      focusNode: widget.focusNode,
+                      autofocus: false,
+                      onChanged: widget.onTextChange,
+                      onSubmitted: (_) {
+                        if (hasText && !widget.isGenerating) widget.onSend();
+                      },
+                      minLines: 1,
+                      maxLines: 8,
+                      textInputAction: TextInputAction.newline,
+                      decoration: InputDecoration(
+                        hintText: widget.isGenerating
+                            ? 'Generating\u2026 tap stop to cancel'
+                            : 'Message Synapse\u2026',
+                        hintStyle: TextStyle(
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                          fontWeight: FontWeight.w400,
+                          fontSize: 15,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
+                        contentPadding:
+                            const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      ),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: cs.onSurface,
+                            height: 1.45,
+                            fontSize: 15,
+                          ),
                     ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                    contentPadding:
-                        const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                  ),
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: cs.onSurface,
-                        height: 1.45,
-                        fontSize: 15,
+
+                    // ── Subtle toolbar divider ──
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: cs.outlineVariant
+                            .withValues(alpha: isDark ? 0.5 : 0.45),
                       ),
-                ),
+                    ),
 
-                // ── Subtle toolbar divider ──
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: cs.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.45),
-                  ),
-                ),
-
-                // ── Action toolbar ──
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
-                  child: Row(
-                    children: [
-                      // ── Left group ──
-                      Expanded(
-                        child: Row(
-                          children: [
-                            _InputToolbarButton(
-                              icon: Icons.attach_file_rounded,
-                              tooltip: 'Attach file',
-                              onPressed: onAttach,
-                            ),
-                            if (hasMessages)
-                              _InputToolbarButton(
-                                icon: Icons.download_rounded,
-                                tooltip: 'Export chat as JSON',
-                                onPressed: onExportChat,
-                              ),
-                          ],
-                        ),
-                      ),
-
-                      // ── Center – Tools split button ──
-                      if (showToolsButton)
-                        _ToolsSplitButton(
-                          toolCount: toolCount,
-                          activeCount: activeCount,
-                          isLoading: isLoadingTools,
-                          hasError: hasToolsError,
-                          onTap: () => _showToolsSheet(context),
-                          onRefresh: controller.refreshMcpTools,
-                        ),
-
-                      // ── Right group ──
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            // Send / Stop button with animated transitions
-                            SizedBox(
-                              width: 38,
-                              height: 38,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 250),
-                                curve: Curves.easeOutCubic,
-                                decoration: ShapeDecoration(
-                                  color: isGenerating
-                                      ? cs.errorContainer
-                                      : hasText
-                                          ? cs.primary
-                                          : cs.onSurface.withValues(alpha: 0.08),
-                                  shape: const CircleBorder(),
+                    // ── Action toolbar ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
+                      child: Row(
+                        children: [
+                          // ── Left group ──
+                          Expanded(
+                            child: Row(
+                              children: [
+                                _InputToolbarButton(
+                                  icon: Icons.attach_file_rounded,
+                                  tooltip: 'Attach file',
+                                  onPressed: widget.onAttach,
                                 ),
-                                clipBehavior: Clip.antiAlias,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  shape: const CircleBorder(),
-                                  child: InkWell(
-                                    onTap: isGenerating
-                                        ? onCancel
-                                        : hasText ? onSend : null,
-                                    customBorder: const CircleBorder(),
-                                    child: Center(
-                                      child: AnimatedSwitcher(
-                                        duration: const Duration(milliseconds: 200),
-                                        switchInCurve: Curves.easeOutCubic,
-                                        switchOutCurve: Curves.easeInCubic,
-                                        transitionBuilder: (child, animation) =>
-                                            ScaleTransition(
+                                if (widget.hasMessages)
+                                  _InputToolbarButton(
+                                    icon: Icons.download_rounded,
+                                    tooltip: 'Export chat as JSON',
+                                    onPressed: widget.onExportChat,
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          // ── Center – Tools split button ──
+                          if (showToolsButton)
+                            _ToolsSplitButton(
+                              toolCount: toolCount,
+                              activeCount: activeCount,
+                              isLoading: isLoadingTools,
+                              hasError: hasToolsError,
+                              onTap: () => _showToolsSheet(context),
+                              onRefresh: widget.controller.refreshMcpTools,
+                            ),
+
+                          // ── Right group ──
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                // Send / Stop button with animated transitions
+                                SizedBox(
+                                  width: 38,
+                                  height: 38,
+                                  child: AnimatedContainer(
+                                    duration:
+                                        const Duration(milliseconds: 250),
+                                    curve: Curves.easeOutCubic,
+                                    decoration: ShapeDecoration(
+                                      color: widget.isGenerating
+                                          ? cs.errorContainer
+                                          : hasText
+                                              ? cs.primary
+                                              : cs.onSurface
+                                                  .withValues(alpha: 0.08),
+                                      shape: const CircleBorder(),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      shape: const CircleBorder(),
+                                      child: InkWell(
+                                        onTap: widget.isGenerating
+                                            ? widget.onCancel
+                                            : hasText
+                                                ? widget.onSend
+                                                : null,
+                                        customBorder: const CircleBorder(),
+                                        child: Center(
+                                          child: AnimatedSwitcher(
+                                            duration: const Duration(
+                                                milliseconds: 200),
+                                            switchInCurve:
+                                                Curves.easeOutCubic,
+                                            switchOutCurve:
+                                                Curves.easeInCubic,
+                                            transitionBuilder:
+                                                (child, animation) =>
+                                                    ScaleTransition(
                                               scale: animation,
                                               child: FadeTransition(
                                                 opacity: animation,
                                                 child: child,
                                               ),
                                             ),
-                                        child: isGenerating
-                                            ? Icon(
-                                                Icons.stop_rounded,
-                                                key: const ValueKey('stop'),
-                                                size: 22,
-                                                color: cs.onErrorContainer,
-                                              )
-                                            : Icon(
-                                                Icons.arrow_upward_rounded,
-                                                key: ValueKey(hasText ? 'send_active' : 'send_inactive'),
-                                                size: 22,
-                                                color: hasText
-                                                    ? cs.onPrimary
-                                                    : cs.onSurface.withValues(alpha: 0.25),
-                                              ),
+                                            child: widget.isGenerating
+                                                ? Icon(
+                                                    Icons.stop_rounded,
+                                                    key: const ValueKey(
+                                                        'stop'),
+                                                    size: 22,
+                                                    color:
+                                                        cs.onErrorContainer,
+                                                  )
+                                                : Icon(
+                                                    Icons
+                                                        .arrow_upward_rounded,
+                                                    key: ValueKey(hasText
+                                                        ? 'send_active'
+                                                        : 'send_inactive'),
+                                                    size: 22,
+                                                    color: hasText
+                                                        ? cs.onPrimary
+                                                        : cs.onSurface
+                                                            .withValues(
+                                                                alpha: 0.25),
+                                                  ),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+                      ),
+                    ),
                   ),
                 ),
+
+                // ── Rainbow gradient border overlay (during generation) ──
+                if (widget.isGenerating)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _RainbowBorderPainter(
+                          progress: _gradientController.value,
+                          borderRadius: 26,
+                          strokeWidth: 2.0,
+                          isDark: isDark,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
-            ),
-          ),
+            );
+          },
         ),
       ),
-    ),
-  ),
-);
+    );
   }
+}
+
+/// Paints a rotating rainbow gradient stroke around a rounded rectangle.
+class _RainbowBorderPainter extends CustomPainter {
+  final double progress;
+  final double borderRadius;
+  final double strokeWidth;
+  final bool isDark;
+
+  _RainbowBorderPainter({
+    required this.progress,
+    required this.borderRadius,
+    required this.strokeWidth,
+    required this.isDark,
+  });
+
+  static const _colors = [
+    Color(0xFFFF6B6B), // red
+    Color(0xFFFF9F43), // orange
+    Color(0xFFFECA57), // yellow
+    Color(0xFF48DBFB), // cyan
+    Color(0xFF0ABDE3), // blue
+    Color(0xFFA29BFE), // purple/lavender
+    Color(0xFFFF6B6B), // red (wrap)
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(strokeWidth / 2),
+      Radius.circular(borderRadius - strokeWidth / 2),
+    );
+
+    final gradient = SweepGradient(
+      colors: _colors,
+      transform: GradientRotation(progress * 2 * pi),
+    );
+
+    final paint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawRRect(rrect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RainbowBorderPainter old) =>
+      old.progress != progress;
 }
 
 // ── Input Toolbar Button ────────────────────────────────────────────────────

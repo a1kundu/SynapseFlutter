@@ -30,10 +30,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
-  final FocusNode _focusNode = FocusNode(
-    skipTraversal: true,
-    canRequestFocus: false, // Locked by default — only user tap unlocks it
-  );
+  final FocusNode _focusNode = FocusNode();
   bool _subAgentDialogShowing = false;
 
   /// The activity the user manually dismissed. Prevents auto-reopening
@@ -47,7 +44,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _ctrl.addListener(_onControllerChanged);
     _ctrl.subAgentActivity.addListener(_onSubAgentActivityChanged);
-    _focusNode.addListener(_lockFocusOnBlur);
     _textController.text = _ctrl.inputText;
   }
 
@@ -66,18 +62,9 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _ctrl.removeListener(_onControllerChanged);
     _ctrl.subAgentActivity.removeListener(_onSubAgentActivityChanged);
-    _focusNode.removeListener(_lockFocusOnBlur);
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
-  }
-
-  /// When the user leaves the input (blur), lock it again so nothing
-  /// can auto-focus it. The Listener on pointer-down is the only key.
-  void _lockFocusOnBlur() {
-    if (!_focusNode.hasFocus) {
-      _focusNode.canRequestFocus = false;
-    }
   }
 
   void _onSubAgentActivityChanged() {
@@ -204,13 +191,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onControllerChanged() {
-    // When switching sessions the controller clears inputText —
-    // sync the text field and drop keyboard focus so it doesn't
-    // auto-focus when the drawer closes.
-    if (_ctrl.inputText.isEmpty && _textController.text.isNotEmpty) {
-      _textController.clear();
-      _focusNode.unfocus();
-    }
     setState(() {});
   }
 
@@ -219,7 +199,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.trim().isEmpty && _ctrl.pendingAttachments.isEmpty) return;
     _ctrl.sendMessage(text);
     _textController.clear();
-    _focusNode.unfocus();
   }
 
   Future<void> _onAttach() async {
@@ -355,9 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return FocusScope(
-      autofocus: false,
-      child: Stack(
+    return Stack(
       children: [
         // Messages list – fills entire area, scrolls behind input bar
         Positioned.fill(
@@ -396,9 +373,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
 
               // Chat input bar with integrated tools button
-              Listener(
-                onPointerDown: (_) => _focusNode.canRequestFocus = true,
-                child: _ChatInputBar(
+              _ChatInputBar(
                   textController: _textController,
                   focusNode: _focusNode,
                   onTextChange: _ctrl.onInputTextChange,
@@ -410,12 +385,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   hasMessages: _ctrl.messages.isNotEmpty,
                   controller: _ctrl,
                 ),
-              ),
             ],
           ),
         ),
       ],
-      ),
     );
   }
 }
@@ -2348,10 +2321,7 @@ class _ChatInputBar extends StatelessWidget {
         listenable: controller,
         builder: (ctx, __) => _ToolsBottomSheet(controller: controller),
       ),
-    ).then((_) {
-      // Prevent focus from jumping to the message input after closing
-      FocusManager.instance.primaryFocus?.unfocus();
-    });
+    );
   }
 
   @override

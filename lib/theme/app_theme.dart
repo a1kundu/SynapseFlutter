@@ -37,8 +37,57 @@ Future<void> loadThemePreferences() async {
 // Theme builder
 // ---------------------------------------------------------------------------
 
+/// Strips [fontFamily] from every [TextStyle] in [textTheme] so the
+/// platform's default typeface is used instead of Material's bundled Roboto.
+/// On Android this respects the user's system font preference (e.g. Samsung,
+/// Xiaomi, etc. let users pick a custom system-wide font).
+TextTheme _useSystemFont(TextTheme textTheme) {
+  TextStyle? strip(TextStyle? s) {
+    if (s == null) return null;
+    return TextStyle(
+      inherit: s.inherit,
+      color: s.color,
+      backgroundColor: s.backgroundColor,
+      fontSize: s.fontSize,
+      fontWeight: s.fontWeight,
+      fontStyle: s.fontStyle,
+      letterSpacing: s.letterSpacing,
+      wordSpacing: s.wordSpacing,
+      textBaseline: s.textBaseline,
+      height: s.height,
+      leadingDistribution: s.leadingDistribution,
+      decoration: s.decoration,
+      decorationColor: s.decorationColor,
+      decorationStyle: s.decorationStyle,
+      decorationThickness: s.decorationThickness,
+      overflow: s.overflow,
+      // fontFamily intentionally omitted — null tells the engine to use the
+      // platform default typeface, which on Android honours the user's
+      // system font setting.
+    );
+  }
+
+  return TextTheme(
+    displayLarge: strip(textTheme.displayLarge),
+    displayMedium: strip(textTheme.displayMedium),
+    displaySmall: strip(textTheme.displaySmall),
+    headlineLarge: strip(textTheme.headlineLarge),
+    headlineMedium: strip(textTheme.headlineMedium),
+    headlineSmall: strip(textTheme.headlineSmall),
+    titleLarge: strip(textTheme.titleLarge),
+    titleMedium: strip(textTheme.titleMedium),
+    titleSmall: strip(textTheme.titleSmall),
+    bodyLarge: strip(textTheme.bodyLarge),
+    bodyMedium: strip(textTheme.bodyMedium),
+    bodySmall: strip(textTheme.bodySmall),
+    labelLarge: strip(textTheme.labelLarge),
+    labelMedium: strip(textTheme.labelMedium),
+    labelSmall: strip(textTheme.labelSmall),
+  );
+}
+
 ThemeData buildAppTheme(ColorScheme colorScheme) {
-  return ThemeData(
+  final theme = ThemeData(
     colorScheme: colorScheme,
     useMaterial3: true,
     cardTheme: CardThemeData(
@@ -165,5 +214,12 @@ ThemeData buildAppTheme(ColorScheme colorScheme) {
       rangePickerHeaderForegroundColor: colorScheme.onPrimaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
     ),
+  );
+
+  // Use the platform's default typeface instead of Material's bundled Roboto,
+  // so Android users who set a custom system font see it in the app.
+  return theme.copyWith(
+    textTheme: _useSystemFont(theme.textTheme),
+    primaryTextTheme: _useSystemFont(theme.primaryTextTheme),
   );
 }

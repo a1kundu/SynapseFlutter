@@ -192,19 +192,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onControllerChanged() {
     setState(() {});
-    if (_ctrl.messages.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final sc = PrimaryScrollController.of(context);
-        if (sc.hasClients) {
-          sc.animateTo(
-            sc.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
   }
 
   void _onSend() {
@@ -212,6 +199,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.trim().isEmpty && _ctrl.pendingAttachments.isEmpty) return;
     _ctrl.sendMessage(text);
     _textController.clear();
+    _focusNode.unfocus();
   }
 
   Future<void> _onAttach() async {
@@ -317,7 +305,6 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
-    // Dispose is handled when dialog closes; controller is short-lived.
   }
 
   void _forkChat(String messageId) {
@@ -348,7 +335,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return FocusScope(
+      autofocus: false,
+      child: Stack(
       children: [
         // Messages list – fills entire area, scrolls behind input bar
         Positioned.fill(
@@ -403,6 +392,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ],
+      ),
     );
   }
 }

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' show max, pi;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
@@ -15,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../agents/agent_models.dart';
 import '../models/chat_models.dart';
 import '../services/chat_controller.dart';
+import '../utils/file_saver.dart';
 import '../utils/snackbar_service.dart';
 import '../widgets/mermaid_view.dart'; // MermaidView
 import 'package:markdown/markdown.dart' as md;
@@ -327,9 +327,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
 
     try {
-      final dir = Directory('/storage/emulated/0/Download');
-      if (!await dir.exists()) await dir.create(recursive: true);
-
       final sessionName = (_ctrl.activeSession?.name ?? 'chat')
           .replaceAll(RegExp(r'[^\w\s-]'), '')
           .replaceAll(RegExp(r'\s+'), '_')
@@ -338,12 +335,11 @@ class _ChatScreenState extends State<ChatScreen> {
           DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
       final fileName = 'synapse_${sessionName}_$timestamp.json';
 
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsString(jsonStr);
+      final savedPath = await saveJsonFile(fileName, jsonStr);
 
       showRootSnackBar(
         SnackBar(
-          content: Text('Chat exported to Downloads/$fileName'),
+          content: Text('Chat exported to $savedPath'),
           duration: const Duration(seconds: 3),
         ),
       );

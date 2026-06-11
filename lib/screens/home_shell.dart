@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' show max;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/chat_session.dart';
 import '../services/chat_controller.dart';
 import '../settings/settings_repository.dart';
+import '../utils/file_saver.dart';
 import '../utils/snackbar_service.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
@@ -429,9 +429,6 @@ class _ChatHistoryPanel extends StatelessWidget {
       final json = controller.exportSessionToJson(session.id);
       final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
 
-      final dir = Directory('/storage/emulated/0/Download');
-      if (!await dir.exists()) await dir.create(recursive: true);
-
       final sessionName = session.name
           .replaceAll(RegExp(r'[^\w\s-]'), '')
           .replaceAll(RegExp(r'\s+'), '_')
@@ -440,12 +437,11 @@ class _ChatHistoryPanel extends StatelessWidget {
           DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
       final fileName = 'synapse_${sessionName}_$timestamp.json';
 
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsString(jsonStr);
+      final savedPath = await saveJsonFile(fileName, jsonStr);
 
       showRootSnackBar(
         SnackBar(
-          content: Text('Chat exported to Downloads/$fileName'),
+          content: Text('Chat exported to $savedPath'),
           duration: const Duration(seconds: 3),
         ),
       );

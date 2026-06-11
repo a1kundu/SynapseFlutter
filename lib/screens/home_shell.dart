@@ -107,6 +107,7 @@ class _WideLayout extends StatelessWidget {
           Expanded(
             child: Scaffold(
               body: NestedScrollView(
+                floatHeaderSlivers: true,
                 headerSliverBuilder: (context, innerBoxIsScrolled) => [
                   _buildSliverAppBar(context, controller, onOpenSettings),
                 ],
@@ -142,6 +143,7 @@ class _NarrowLayout extends StatelessWidget {
         ),
       ),
       body: NestedScrollView(
+        floatHeaderSlivers: true,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           _buildSliverAppBar(context, controller, onOpenSettings,
               showMenuButton: true),

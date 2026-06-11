@@ -161,8 +161,8 @@ SliverAppBar _buildSliverAppBar(
   bool showMenuButton = false,
 }) {
   return SliverAppBar(
-    floating: true,
-    snap: true,
+    floating: false,
+    snap: false,
     pinned: false,
     toolbarHeight: 64,
     leading: showMenuButton

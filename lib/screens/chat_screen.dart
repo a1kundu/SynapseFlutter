@@ -1050,7 +1050,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 minWidth: 60,
                 maxWidth: isUser
                     ? 340
-                    : MediaQuery.of(context).size.width * 0.85,
+                    : MediaQuery.of(context).size.width,
               ),
               decoration: BoxDecoration(
                 color: bubbleColor,

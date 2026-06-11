@@ -2622,7 +2622,7 @@ class _ChatInputBarState extends State<_ChatInputBar>
                                                   )
                                                 : Icon(
                                                     Icons
-                                                        .arrow_upward_rounded,
+                                                        .send_rounded,
                                                     key: ValueKey(hasText
                                                         ? 'send_active'
                                                         : 'send_inactive'),

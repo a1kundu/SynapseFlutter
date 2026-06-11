@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,59 +38,20 @@ Future<void> loadThemePreferences() async {
 // Theme builder
 // ---------------------------------------------------------------------------
 
-/// Strips [fontFamily] from every [TextStyle] in [textTheme] so the
-/// platform's default typeface is used instead of Material's bundled Roboto.
-/// On Android this respects the user's system font preference (e.g. Samsung,
-/// Xiaomi, etc. let users pick a custom system-wide font).
-TextTheme _useSystemFont(TextTheme textTheme) {
-  TextStyle? strip(TextStyle? s) {
-    if (s == null) return null;
-    return TextStyle(
-      inherit: s.inherit,
-      color: s.color,
-      backgroundColor: s.backgroundColor,
-      fontSize: s.fontSize,
-      fontWeight: s.fontWeight,
-      fontStyle: s.fontStyle,
-      letterSpacing: s.letterSpacing,
-      wordSpacing: s.wordSpacing,
-      textBaseline: s.textBaseline,
-      height: s.height,
-      leadingDistribution: s.leadingDistribution,
-      decoration: s.decoration,
-      decorationColor: s.decorationColor,
-      decorationStyle: s.decorationStyle,
-      decorationThickness: s.decorationThickness,
-      overflow: s.overflow,
-      // fontFamily intentionally omitted — null tells the engine to use the
-      // platform default typeface, which on Android honours the user's
-      // system font setting.
-    );
-  }
-
-  return TextTheme(
-    displayLarge: strip(textTheme.displayLarge),
-    displayMedium: strip(textTheme.displayMedium),
-    displaySmall: strip(textTheme.displaySmall),
-    headlineLarge: strip(textTheme.headlineLarge),
-    headlineMedium: strip(textTheme.headlineMedium),
-    headlineSmall: strip(textTheme.headlineSmall),
-    titleLarge: strip(textTheme.titleLarge),
-    titleMedium: strip(textTheme.titleMedium),
-    titleSmall: strip(textTheme.titleSmall),
-    bodyLarge: strip(textTheme.bodyLarge),
-    bodyMedium: strip(textTheme.bodyMedium),
-    bodySmall: strip(textTheme.bodySmall),
-    labelLarge: strip(textTheme.labelLarge),
-    labelMedium: strip(textTheme.labelMedium),
-    labelSmall: strip(textTheme.labelSmall),
-  );
-}
-
 ThemeData buildAppTheme(ColorScheme colorScheme) {
-  final theme = ThemeData(
+  return ThemeData(
     colorScheme: colorScheme,
     useMaterial3: true,
+    // On Android, request the generic 'sans-serif' family instead of the
+    // bundled 'Roboto'. Flutter ships its own Roboto copy and always uses it
+    // when the family name is 'Roboto' (or null, which defaults to Roboto).
+    // The name 'sans-serif' is NOT in Flutter's asset fonts, so Skia resolves
+    // it through the platform font manager which reads the system fonts.xml.
+    // On Samsung, Xiaomi, etc. that file is updated when the user picks a
+    // custom system-wide font, so this respects their preference.
+    fontFamily: defaultTargetPlatform == TargetPlatform.android
+        ? 'sans-serif'
+        : null,
     cardTheme: CardThemeData(
       elevation: 1,
       clipBehavior: Clip.antiAlias,
@@ -214,12 +176,5 @@ ThemeData buildAppTheme(ColorScheme colorScheme) {
       rangePickerHeaderForegroundColor: colorScheme.onPrimaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
     ),
-  );
-
-  // Use the platform's default typeface instead of Material's bundled Roboto,
-  // so Android users who set a custom system font see it in the app.
-  return theme.copyWith(
-    textTheme: _useSystemFont(theme.textTheme),
-    primaryTextTheme: _useSystemFont(theme.primaryTextTheme),
   );
 }

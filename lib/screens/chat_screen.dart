@@ -30,7 +30,10 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
-  final FocusNode _focusNode = FocusNode(skipTraversal: true);
+  final FocusNode _focusNode = FocusNode(
+    skipTraversal: true,
+    canRequestFocus: false, // Locked by default — only user tap unlocks it
+  );
   bool _subAgentDialogShowing = false;
 
   /// The activity the user manually dismissed. Prevents auto-reopening
@@ -44,6 +47,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _ctrl.addListener(_onControllerChanged);
     _ctrl.subAgentActivity.addListener(_onSubAgentActivityChanged);
+    _focusNode.addListener(_lockFocusOnBlur);
     _textController.text = _ctrl.inputText;
   }
 
@@ -62,9 +66,18 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _ctrl.removeListener(_onControllerChanged);
     _ctrl.subAgentActivity.removeListener(_onSubAgentActivityChanged);
+    _focusNode.removeListener(_lockFocusOnBlur);
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// When the user leaves the input (blur), lock it again so nothing
+  /// can auto-focus it. The Listener on pointer-down is the only key.
+  void _lockFocusOnBlur() {
+    if (!_focusNode.hasFocus) {
+      _focusNode.canRequestFocus = false;
+    }
   }
 
   void _onSubAgentActivityChanged() {
@@ -383,17 +396,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
 
               // Chat input bar with integrated tools button
-              _ChatInputBar(
-                textController: _textController,
-                focusNode: _focusNode,
-                onTextChange: _ctrl.onInputTextChange,
-                onSend: _onSend,
-                onAttach: _onAttach,
-                isGenerating: _ctrl.isGenerating,
-                onExportChat: _exportChat,
-                onCancel: _ctrl.cancelGeneration,
-                hasMessages: _ctrl.messages.isNotEmpty,
-                controller: _ctrl,
+              Listener(
+                onPointerDown: (_) => _focusNode.canRequestFocus = true,
+                child: _ChatInputBar(
+                  textController: _textController,
+                  focusNode: _focusNode,
+                  onTextChange: _ctrl.onInputTextChange,
+                  onSend: _onSend,
+                  onAttach: _onAttach,
+                  isGenerating: _ctrl.isGenerating,
+                  onExportChat: _exportChat,
+                  onCancel: _ctrl.cancelGeneration,
+                  hasMessages: _ctrl.messages.isNotEmpty,
+                  controller: _ctrl,
+                ),
               ),
             ],
           ),

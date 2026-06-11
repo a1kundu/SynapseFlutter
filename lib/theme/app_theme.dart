@@ -56,10 +56,9 @@ ThemeData buildAppTheme(ColorScheme colorScheme) {
     ),
     appBarTheme: AppBarTheme(
       centerTitle: false,
-      scrolledUnderElevation: 0,
-      elevation: 0,
-      backgroundColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: 2,
+      backgroundColor: colorScheme.surface,
+      surfaceTintColor: colorScheme.surfaceTint,
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,

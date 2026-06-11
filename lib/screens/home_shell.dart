@@ -162,29 +162,11 @@ SliverAppBar _buildSliverAppBar(
   VoidCallback onOpenSettings, {
   bool showMenuButton = false,
 }) {
-  final cs = Theme.of(context).colorScheme;
   return SliverAppBar(
     floating: true,
     snap: false,
     pinned: false,
     toolbarHeight: 64,
-    backgroundColor: Colors.transparent,
-    scrolledUnderElevation: 0,
-    elevation: 0,
-    flexibleSpace: Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            cs.surface,
-            cs.surface,
-            cs.surface.withValues(alpha: 0),
-          ],
-          stops: const [0.0, 0.65, 1.0],
-        ),
-      ),
-    ),
     leading: showMenuButton
         ? Builder(
             builder: (ctx) => IconButton(

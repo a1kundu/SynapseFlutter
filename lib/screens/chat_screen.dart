@@ -191,6 +191,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onControllerChanged() {
+    // When switching sessions the controller clears inputText —
+    // sync the text field and drop keyboard focus so it doesn't
+    // auto-focus when the drawer closes.
+    if (_ctrl.inputText.isEmpty && _textController.text.isNotEmpty) {
+      _textController.clear();
+      _focusNode.unfocus();
+    }
     setState(() {});
   }
 

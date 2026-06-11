@@ -1113,8 +1113,15 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
                   // Text content
                   if (widget.message.content.isNotEmpty) ...[
-                    if (isUser || widget.message.isStreaming)
+                    if (isUser)
                       Text(
+                        widget.message.content,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: contentColor),
+                      )
+                    else if (widget.message.isStreaming)
+                      SelectableText(
                         widget.message.content,
                         style: Theme.of(
                           context,
@@ -1143,8 +1150,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
               ),
             ),
 
-            // Action buttons (shown on long press)
-            if (_showActions)
+            // Action buttons (always visible for assistant, long press for user)
+            if ((!isUser && !widget.message.isStreaming && !widget.isGenerating) || _showActions)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Row(
@@ -1396,7 +1403,7 @@ class _AssistantMarkdown extends StatelessWidget {
 
     return MarkdownBody(
       data: data,
-      selectable: false,
+      selectable: true,
       extensionSet: md.ExtensionSet.gitHubWeb,
       styleSheet: MarkdownStyleSheet(
         p: Theme.of(

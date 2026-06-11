@@ -2332,7 +2332,10 @@ class _ChatInputBar extends StatelessWidget {
         listenable: controller,
         builder: (ctx, __) => _ToolsBottomSheet(controller: controller),
       ),
-    );
+    ).then((_) {
+      // Prevent focus from jumping to the message input after closing
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
   }
 
   @override

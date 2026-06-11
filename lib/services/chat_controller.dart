@@ -610,6 +610,44 @@ class ChatController extends ChangeNotifier {
     };
   }
 
+  /// Export a specific session (by ID) as a JSON map.
+  Map<String, dynamic> exportSessionToJson(String sessionId) {
+    final session = sessions.where((s) => s.id == sessionId).firstOrNull;
+    if (session == null) return {};
+
+    // Use current messages if it's the active session, otherwise load from storage
+    final msgs = (activeSession?.id == sessionId)
+        ? messages
+        : _storage.getMessages(sessionId);
+
+    return {
+      'session': {
+        'id': session.id,
+        'name': session.name,
+        'createdAt': session.createdAt.toIso8601String(),
+        'exportedAt': DateTime.now().toIso8601String(),
+      },
+      'messages': msgs
+          .map(
+            (m) => {
+              'role': m.role.name,
+              'content': m.content,
+              'model': m.model?.displayName,
+              'attachments': m.attachments
+                  .map(
+                    (a) => {
+                      'fileName': a.fileName,
+                      'mimeType': a.mimeType,
+                      'size': a.displaySize,
+                    },
+                  )
+                  .toList(),
+            },
+          )
+          .toList(),
+    };
+  }
+
   void _saveCurrentSession() {
     if (activeSession != null && messages.isNotEmpty) {
       activeSession!.updatedAt = DateTime.now();

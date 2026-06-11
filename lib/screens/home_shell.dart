@@ -1,8 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/chat_session.dart';
 import '../services/chat_controller.dart';
 import '../settings/settings_repository.dart';
+import '../utils/snackbar_service.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 
@@ -319,6 +322,8 @@ class _ChatHistoryPanel extends StatelessWidget {
                             _showRenameDialog(context, session),
                         onDelete: () =>
                             _showDeleteConfirm(context, session),
+                        onExport: () =>
+                            _exportSession(context, session),
                       );
                     },
                   ),
@@ -395,6 +400,41 @@ class _ChatHistoryPanel extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _exportSession(BuildContext context, ChatSession session) async {
+    try {
+      final json = controller.exportSessionToJson(session.id);
+      final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
+
+      final dir = Directory('/storage/emulated/0/Download');
+      if (!await dir.exists()) await dir.create(recursive: true);
+
+      final sessionName = session.name
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(RegExp(r'\s+'), '_')
+          .toLowerCase();
+      final timestamp =
+          DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'synapse_${sessionName}_$timestamp.json';
+
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(jsonStr);
+
+      showRootSnackBar(
+        SnackBar(
+          content: Text('Chat exported to Downloads/$fileName'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      showRootSnackBar(
+        SnackBar(
+          content: Text('Export failed: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
 }
 
 // ── Chat Session Tile ───────────────────────────────────────────────────────
@@ -405,6 +445,7 @@ class _ChatSessionTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+  final VoidCallback onExport;
 
   const _ChatSessionTile({
     required this.session,
@@ -412,6 +453,7 @@ class _ChatSessionTile extends StatelessWidget {
     required this.onTap,
     required this.onRename,
     required this.onDelete,
+    required this.onExport,
   });
 
   @override
@@ -480,6 +522,7 @@ class _ChatSessionTile extends StatelessWidget {
                   ),
                   onSelected: (value) {
                     if (value == 'rename') onRename();
+                    if (value == 'export') onExport();
                     if (value == 'delete') onDelete();
                   },
                   itemBuilder: (context) => [
@@ -490,6 +533,16 @@ class _ChatSessionTile extends StatelessWidget {
                           Icon(Icons.edit_outlined, size: 16),
                           SizedBox(width: 8),
                           Text('Rename'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'export',
+                      child: Row(
+                        children: [
+                          Icon(Icons.download_rounded, size: 16),
+                          SizedBox(width: 8),
+                          Text('Export'),
                         ],
                       ),
                     ),

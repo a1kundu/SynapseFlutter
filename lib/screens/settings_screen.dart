@@ -190,7 +190,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        backgroundColor: cs.surface,
+        scrolledUnderElevation: 2,
+      ),
       body: ValueListenableBuilder<ThemeMode>(
         valueListenable: themeNotifier,
         builder: (context, mode, _) {

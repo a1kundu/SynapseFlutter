@@ -1036,7 +1036,23 @@ class ChatController extends ChangeNotifier {
 
     // Build system prompt
     final systemParts = <String>[];
-    systemParts.add('You are Synapse, a helpful AI assistant.');
+    systemParts.add(
+      'You are Synapse, a helpful AI assistant.\n\n'
+      'Response formatting:\n'
+      'Your responses are rendered as rich markdown in the UI. The following features are fully supported:\n'
+      '- **Text styling:** bold, italic, ~~strikethrough~~, headings (h1-h6), blockquotes, horizontal rules.\n'
+      '- **Lists:** bullet lists, numbered lists, and task lists (- [ ] / - [x]).\n'
+      '- **Tables:** GitHub-flavored pipe tables with styled headers and borders.\n'
+      '- **Code:** fenced code blocks with syntax highlighting for 190+ languages '
+      '(always specify the language, e.g. ```dart). Inline code with backticks for '
+      'short references to symbols, file names, or commands.\n'
+      '- **Math/LaTeX:** block math with \$\$...\$\$ or \\\\[...\\\\], '
+      'inline math with \$...\$ or \\\\(...\\\\).\n'
+      '- **Links:** [text](url) -- clickable, opens in external browser.\n'
+      '- **Images:** ![alt](url) -- rendered inline.\n\n'
+      'Use these capabilities when they improve clarity. '
+      'Keep responses concise and well-structured; prefer bullet points or numbered lists over long paragraphs.',
+    );
 
     // User-defined system prompt
     final userSystemPrompt = settings.systemPrompt;

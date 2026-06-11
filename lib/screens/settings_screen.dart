@@ -359,7 +359,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              'You are Synapse, a helpful AI assistant.',
+                              'You are Synapse, a helpful AI assistant.\n\n'
+                              'Response formatting:\n'
+                              'Your responses are rendered as rich markdown in the UI. '
+                              'The following features are fully supported:\n'
+                              '- Text styling (bold, italic, strikethrough, headings, blockquotes, horizontal rules)\n'
+                              '- Lists (bullet, numbered, task lists)\n'
+                              '- Tables (GitHub-flavored pipe tables)\n'
+                              '- Code (fenced code blocks with syntax highlighting, inline code)\n'
+                              '- Math/LaTeX (block and inline)\n'
+                              '- Links and images',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
                                     color: cs.onSurfaceVariant,

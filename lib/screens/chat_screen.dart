@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' show pi;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
@@ -321,16 +322,39 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl.retryFromMessage(messageId);
   }
 
-  void _exportChat() {
+  Future<void> _exportChat() async {
     final json = _ctrl.exportChatToJson();
     final jsonStr = const JsonEncoder.withIndent('  ').convert(json);
-    Clipboard.setData(ClipboardData(text: jsonStr));
-    showRootSnackBar(
-      const SnackBar(
-        content: Text('Chat exported to clipboard as JSON'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+
+    try {
+      final dir = Directory('/storage/emulated/0/Download');
+      if (!await dir.exists()) await dir.create(recursive: true);
+
+      final sessionName = (_ctrl.activeSession?.name ?? 'chat')
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(RegExp(r'\s+'), '_')
+          .toLowerCase();
+      final timestamp =
+          DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'synapse_${sessionName}_$timestamp.json';
+
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(jsonStr);
+
+      showRootSnackBar(
+        SnackBar(
+          content: Text('Chat exported to Downloads/$fileName'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      showRootSnackBar(
+        SnackBar(
+          content: Text('Export failed: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override

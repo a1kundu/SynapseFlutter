@@ -142,6 +142,14 @@ class _NarrowLayout extends StatelessWidget {
           isDrawer: true,
         ),
       ),
+      onDrawerChanged: (isOpen) {
+        if (!isOpen) {
+          // Drawer just closed — drop any lingering focus so the
+          // chat input doesn't auto-grab it (which would pop the
+          // keyboard unexpectedly).
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
+      },
       body: NestedScrollView(
         floatHeaderSlivers: true,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [

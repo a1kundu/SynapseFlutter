@@ -74,9 +74,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// When the user leaves the input (blur), lock it again so nothing
   /// can auto-focus it. The Listener on pointer-down is the only key.
+  ///
+  /// The lock is deferred by one frame so that a tap sequence
+  /// (onPointerDown → requestFocus) can complete before the lock
+  /// takes effect.  Without the deferral the lock can race with the
+  /// pointer-down unlock—especially after a drawer/dialog close—and
+  /// leave the input permanently unfocusable.
   void _lockFocusOnBlur() {
     if (!_focusNode.hasFocus) {
-      _focusNode.canRequestFocus = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_focusNode.hasFocus) {
+          _focusNode.canRequestFocus = false;
+        }
+      });
     }
   }
 
@@ -122,6 +132,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (activity != null && activity.isRunning) {
         _userDismissedActivity = activity;
       }
+      // Prevent focus from jumping to the message input after closing
+      FocusManager.instance.primaryFocus?.unfocus();
     });
   }
 
@@ -160,7 +172,10 @@ class _ChatScreenState extends State<ChatScreen> {
         staticActivity: activity,
         onDismiss: () => Navigator.of(dialogContext).pop(),
       ),
-    );
+    ).then((_) {
+      // Prevent focus from jumping to the message input after closing
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
   }
 
   /// Reconstruct a [SubAgentActivity] from a persisted [ToolCallEntry].
@@ -209,6 +224,11 @@ class _ChatScreenState extends State<ChatScreen> {
     // auto-focus when the drawer closes.
     if (_ctrl.inputText.isEmpty && _textController.text.isNotEmpty) {
       _textController.clear();
+    }
+    // Always drop focus when the controller notifies (session switch,
+    // generation start/stop, etc.) to prevent the keyboard from
+    // persisting across state changes.
+    if (_focusNode.hasFocus) {
       _focusNode.unfocus();
     }
     setState(() {});
@@ -227,7 +247,11 @@ class _ChatScreenState extends State<ChatScreen> {
       allowMultiple: true,
       withData: true,
     );
-    if (result == null) return;
+    if (result == null) {
+      // Picker was cancelled — prevent keyboard from reappearing
+      FocusManager.instance.primaryFocus?.unfocus();
+      return;
+    }
     for (final file in result.files) {
       _ctrl.addAttachment(
         ChatAttachment(
@@ -238,6 +262,8 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     }
+    // Prevent keyboard from reappearing after the picker closes
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   String _guessMimeType(String name) {
@@ -324,7 +350,10 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         );
       },
-    );
+    ).then((_) {
+      // Prevent focus from jumping to the message input after closing
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
   }
 
   void _forkChat(String messageId) {
@@ -2410,9 +2439,6 @@ class _ChatInputBar extends StatelessWidget {
                   focusNode: focusNode,
                   autofocus: false,
                   onChanged: onTextChange,
-                  onSubmitted: (_) {
-                    if (hasText && !isGenerating) onSend();
-                  },
                   minLines: 1,
                   maxLines: 8,
                   textInputAction: TextInputAction.newline,

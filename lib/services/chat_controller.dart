@@ -12,6 +12,7 @@ import 'lua_executor.dart';
 import 'mcp_client.dart';
 import 'notification_service.dart';
 import 'rest_client_service.dart';
+import 'memory_service.dart';
 import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
@@ -336,6 +337,58 @@ class ChatController extends ChangeNotifier {
             },
           },
           'required': ['host', 'username', 'command'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'memory_manage',
+        description:
+            'Persistent memory store that survives across chat sessions. '
+            'Use this to save, recall, search, list, or delete information '
+            'the user wants remembered (preferences, facts, notes, context). '
+            'Memories are stored as key-value pairs with optional tags.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': ['save', 'recall', 'search', 'list', 'delete'],
+              'description':
+                  'The action to perform:\n'
+                  '- save: Store or update a memory.\n'
+                  '- recall: Retrieve a memory by exact key.\n'
+                  '- search: Find memories by substring match in key, content, or tags.\n'
+                  '- list: List all memories (optionally filtered by tag).\n'
+                  '- delete: Remove a memory by key.',
+            },
+            'key': {
+              'type': 'string',
+              'description':
+                  'The unique key for the memory. Required for save, recall, and delete. '
+                  'Use short, descriptive, snake_case keys (e.g. "user_name", "project_stack").',
+            },
+            'content': {
+              'type': 'string',
+              'description':
+                  'The content to store. Required for save.',
+            },
+            'tags': {
+              'type': 'array',
+              'items': {'type': 'string'},
+              'description':
+                  'Optional tags for categorisation (e.g. ["preference", "work"]). '
+                  'Used with save. When listing, pass a single tag to filter.',
+            },
+            'query': {
+              'type': 'string',
+              'description':
+                  'Search query string. Required for the search action.',
+            },
+          },
+          'required': ['action'],
         },
       ),
       isSystemTool: true,
@@ -1452,10 +1505,54 @@ class ChatController extends ChangeNotifier {
           command: sshCommand,
           timeoutSeconds: (args['timeout_seconds'] as int?) ?? 30,
         );
+      case 'memory_manage':
+        return _executeMemoryManage(args);
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);
       default:
         return "Error: Unknown system tool '$toolName'";
+    }
+  }
+
+  /// Execute the memory_manage system tool.
+  String _executeMemoryManage(Map<String, dynamic> args) {
+    final action = args['action'] as String? ?? '';
+    final memory = MemoryService.instance;
+
+    switch (action) {
+      case 'save':
+        final key = args['key'] as String? ?? '';
+        if (key.trim().isEmpty) return 'Error: "key" is required for save.';
+        final content = args['content'] as String? ?? '';
+        if (content.trim().isEmpty) {
+          return 'Error: "content" is required for save.';
+        }
+        final tags = (args['tags'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [];
+        return memory.save(key: key, content: content, tags: tags);
+      case 'recall':
+        final key = args['key'] as String? ?? '';
+        if (key.trim().isEmpty) return 'Error: "key" is required for recall.';
+        return memory.recall(key);
+      case 'search':
+        final query = args['query'] as String? ?? '';
+        if (query.trim().isEmpty) {
+          return 'Error: "query" is required for search.';
+        }
+        return memory.search(query);
+      case 'list':
+        final tags = args['tags'] as List<dynamic>?;
+        final tag = tags != null && tags.isNotEmpty ? tags.first.toString() : null;
+        return memory.list(tag: tag);
+      case 'delete':
+        final key = args['key'] as String? ?? '';
+        if (key.trim().isEmpty) return 'Error: "key" is required for delete.';
+        return memory.delete(key);
+      default:
+        return 'Error: Unknown memory action "$action". '
+            'Use save, recall, search, list, or delete.';
     }
   }
 

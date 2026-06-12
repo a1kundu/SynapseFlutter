@@ -5,6 +5,7 @@ import '../models/mcp_models.dart';
 import '../services/llm_api_client.dart';
 import '../services/mcp_client.dart';
 import '../services/lua_executor.dart';
+import '../services/memory_service.dart';
 import '../services/notification_service.dart';
 import '../services/rest_client_service.dart';
 import '../services/ssh_service.dart';
@@ -368,8 +369,52 @@ class AgentExecutor {
           command: sshCommand,
           timeoutSeconds: (args['timeout_seconds'] as int?) ?? 30,
         );
+      case 'memory_manage':
+        return _executeMemoryManage(args);
       default:
         return "Error: Unknown system tool '$toolName'";
+    }
+  }
+
+  /// Execute the memory_manage system tool within a sub-agent.
+  String _executeMemoryManage(Map<String, dynamic> args) {
+    final action = args['action'] as String? ?? '';
+    final memory = MemoryService.instance;
+
+    switch (action) {
+      case 'save':
+        final key = args['key'] as String? ?? '';
+        if (key.trim().isEmpty) return 'Error: "key" is required for save.';
+        final content = args['content'] as String? ?? '';
+        if (content.trim().isEmpty) {
+          return 'Error: "content" is required for save.';
+        }
+        final tags = (args['tags'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [];
+        return memory.save(key: key, content: content, tags: tags);
+      case 'recall':
+        final key = args['key'] as String? ?? '';
+        if (key.trim().isEmpty) return 'Error: "key" is required for recall.';
+        return memory.recall(key);
+      case 'search':
+        final query = args['query'] as String? ?? '';
+        if (query.trim().isEmpty) {
+          return 'Error: "query" is required for search.';
+        }
+        return memory.search(query);
+      case 'list':
+        final tags = args['tags'] as List<dynamic>?;
+        final tag = tags != null && tags.isNotEmpty ? tags.first.toString() : null;
+        return memory.list(tag: tag);
+      case 'delete':
+        final key = args['key'] as String? ?? '';
+        if (key.trim().isEmpty) return 'Error: "key" is required for delete.';
+        return memory.delete(key);
+      default:
+        return 'Error: Unknown memory action "$action". '
+            'Use save, recall, search, list, or delete.';
     }
   }
 }

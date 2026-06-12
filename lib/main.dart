@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'services/background_update.dart';
 import 'services/chat_controller.dart';
 import 'services/chat_storage.dart';
+import 'services/memory_service.dart';
 import 'services/update_service.dart';
 import 'settings/settings_repository.dart';
 import 'theme/app_theme.dart';
@@ -27,6 +28,7 @@ void main() async {
   ));
   await SettingsRepository.instance.init();
   await ChatStorage.instance.init();
+  await MemoryService.instance.init();
   await loadThemePreferences();
   try {
     await BackgroundUpdateManager.init();

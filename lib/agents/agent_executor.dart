@@ -410,8 +410,18 @@ class AgentExecutor {
           path: args['path'] as String?,
           destination: args['destination'] as String?,
           content: args['content'] as String?,
+          pattern: args['pattern'] as String?,
+          replacement: args['replacement'] as String?,
+          algorithm: args['algorithm'] as String?,
+          includeFilter: args['include_filter'] as String?,
           recursive: args['recursive'] as bool? ?? false,
           showHidden: args['show_hidden'] as bool? ?? false,
+          dryRun: args['dry_run'] as bool? ?? false,
+          limit: args['limit'] as int?,
+          offset: args['offset'] as int?,
+          length: args['length'] as int?,
+          lines: args['lines'] as int?,
+          maxDepth: args['max_depth'] as int?,
         );
       default:
         return "Error: Unknown system tool '$toolName'";

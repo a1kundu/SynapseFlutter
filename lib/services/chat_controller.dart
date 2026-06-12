@@ -14,6 +14,7 @@ import 'notification_service.dart';
 import 'rest_client_service.dart';
 import 'memory_service.dart';
 import 'file_system_service.dart';
+import 'git_service.dart';
 import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
@@ -558,6 +559,218 @@ class ChatController extends ChangeNotifier {
               'type': 'integer',
               'description':
                   'Maximum directory depth for the tree action. Defaults to 10.',
+            },
+          },
+          'required': ['action'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'git_manager',
+        description:
+            'Full Git version control on the Android local file system via JGit. '
+            'Operates on the same files accessible through file_manager. '
+            'Supports all core Git operations.\n\n'
+            'Actions:\n'
+            '- **init**: Initialize a new Git repository.\n'
+            '- **clone**: Clone a remote repository (HTTPS). Pass "url", "path", '
+            'and optionally "username"/"password" for auth.\n'
+            '- **status**: Show working tree status (staged, unstaged, untracked, conflicts).\n'
+            '- **add**: Stage files. Use "filepattern" (default: "." for all).\n'
+            '- **remove**: Remove/unstage files. Set "cached"=true to unstage only.\n'
+            '- **commit**: Commit staged changes. Requires "message". Supports "amend".\n'
+            '- **log**: Show commit history. Use "max_count" (default: 20).\n'
+            '- **diff**: Show differences. Set "staged"=true for staged diff.\n'
+            '- **branch_list**: List branches. Set "all"=true to include remote branches.\n'
+            '- **branch_create**: Create a branch. Pass "name", optionally "start_point".\n'
+            '- **branch_delete**: Delete a branch. Set "force"=true for unmerged branches.\n'
+            '- **branch_rename**: Rename a branch. Pass "old_name" and "new_name".\n'
+            '- **checkout**: Switch branches or restore files. Set "create_branch"=true '
+            'to create and switch.\n'
+            '- **merge**: Merge a branch into current. Pass "branch".\n'
+            '- **pull**: Pull from remote. Pass "remote" (default: origin), "branch".\n'
+            '- **push**: Push to remote. Supports "force", "tags".\n'
+            '- **remote_list**: List configured remotes.\n'
+            '- **remote_add**: Add a remote. Pass "name" and "url".\n'
+            '- **remote_remove**: Remove a remote.\n'
+            '- **stash_create**: Stash changes. Pass "message", "include_untracked".\n'
+            '- **stash_list**: List all stashes.\n'
+            '- **stash_apply**: Apply a stash. Set "drop"=true to pop.\n'
+            '- **stash_drop**: Drop a stash.\n'
+            '- **tag_list**: List tags.\n'
+            '- **tag_create**: Create a tag. Pass "message" for annotated tag.\n'
+            '- **tag_delete**: Delete a tag.\n'
+            '- **reset**: Reset HEAD. Use "mode" (soft/mixed/hard) and "ref".\n'
+            '- **clean**: Remove untracked files. Set "force", "directories", "dry_run".\n\n'
+            'All actions require "path" pointing to the repository root '
+            '(the directory containing .git). Use file_manager to browse the file system '
+            'first if needed.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'init', 'clone', 'status', 'add', 'remove',
+                'commit', 'log', 'diff',
+                'branch_list', 'branch_create', 'branch_delete', 'branch_rename',
+                'checkout', 'merge', 'pull', 'push',
+                'remote_list', 'remote_add', 'remote_remove',
+                'stash_create', 'stash_list', 'stash_apply', 'stash_drop',
+                'tag_list', 'tag_create', 'tag_delete',
+                'reset', 'clean',
+              ],
+              'description': 'The Git operation to perform.',
+            },
+            'path': {
+              'type': 'string',
+              'description':
+                  'Absolute path to the repository root directory (containing .git). '
+                  'Required for all actions.',
+            },
+            'url': {
+              'type': 'string',
+              'description':
+                  'Remote repository URL for clone and remote_add '
+                  '(e.g. "https://github.com/user/repo.git").',
+            },
+            'branch': {
+              'type': 'string',
+              'description':
+                  'Branch name for clone, merge, pull, and push.',
+            },
+            'name': {
+              'type': 'string',
+              'description':
+                  'Name for branch_create, branch_delete, checkout, '
+                  'remote_add/remove, tag_create/delete.',
+            },
+            'old_name': {
+              'type': 'string',
+              'description': 'Old branch name for branch_rename.',
+            },
+            'new_name': {
+              'type': 'string',
+              'description': 'New branch name for branch_rename.',
+            },
+            'message': {
+              'type': 'string',
+              'description':
+                  'Commit message for commit, stash message for stash_create, '
+                  'annotation for tag_create.',
+            },
+            'filepattern': {
+              'type': 'string',
+              'description':
+                  'File pattern for add and remove. '
+                  'Use "." to stage all. Defaults to "." for add.',
+            },
+            'remote': {
+              'type': 'string',
+              'description':
+                  'Remote name for pull and push. Defaults to "origin".',
+            },
+            'ref': {
+              'type': 'string',
+              'description':
+                  'Reference (commit hash/branch/tag) for reset. '
+                  'Defaults to "HEAD".',
+            },
+            'start_point': {
+              'type': 'string',
+              'description':
+                  'Starting commit/branch for branch_create.',
+            },
+            'stash_ref': {
+              'type': 'string',
+              'description':
+                  'Stash reference for stash_apply and stash_drop '
+                  '(e.g. "stash@{0}"). Defaults to latest.',
+            },
+            'mode': {
+              'type': 'string',
+              'enum': ['soft', 'mixed', 'hard'],
+              'description':
+                  'Reset mode. "soft" keeps staged, "mixed" unstages, '
+                  '"hard" discards all changes. Defaults to "mixed".',
+            },
+            'username': {
+              'type': 'string',
+              'description':
+                  'Username for HTTPS authentication (clone, pull, push).',
+            },
+            'password': {
+              'type': 'string',
+              'description':
+                  'Password or personal access token for HTTPS auth.',
+            },
+            'author_name': {
+              'type': 'string',
+              'description': 'Author name for commit.',
+            },
+            'author_email': {
+              'type': 'string',
+              'description': 'Author email for commit.',
+            },
+            'max_count': {
+              'type': 'integer',
+              'description': 'Maximum commits to show in log. Defaults to 20.',
+            },
+            'staged': {
+              'type': 'boolean',
+              'description': 'If true, diff shows staged changes vs HEAD.',
+            },
+            'cached': {
+              'type': 'boolean',
+              'description':
+                  'If true, remove only unstages (keeps file on disk).',
+            },
+            'amend': {
+              'type': 'boolean',
+              'description': 'If true, amend the last commit.',
+            },
+            'force': {
+              'type': 'boolean',
+              'description':
+                  'Force delete unmerged branches or force push.',
+            },
+            'bare': {
+              'type': 'boolean',
+              'description': 'Create a bare repository (init only).',
+            },
+            'all': {
+              'type': 'boolean',
+              'description':
+                  'Include remote branches in branch_list.',
+            },
+            'tags': {
+              'type': 'boolean',
+              'description': 'Push tags along with commits.',
+            },
+            'create_branch': {
+              'type': 'boolean',
+              'description':
+                  'Create the branch if it doesn\'t exist (checkout -b).',
+            },
+            'include_untracked': {
+              'type': 'boolean',
+              'description': 'Include untracked files in stash.',
+            },
+            'directories': {
+              'type': 'boolean',
+              'description': 'Remove untracked directories too (clean).',
+            },
+            'dry_run': {
+              'type': 'boolean',
+              'description': 'Preview clean without removing files.',
+            },
+            'drop': {
+              'type': 'boolean',
+              'description':
+                  'Drop the stash after applying (stash pop).',
             },
           },
           'required': ['action'],
@@ -1705,6 +1918,44 @@ class ChatController extends ChangeNotifier {
           length: args['length'] as int?,
           lines: args['lines'] as int?,
           maxDepth: args['max_depth'] as int?,
+        );
+      case 'git_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) {
+          return 'Error: "action" is required.';
+        }
+        return await GitService.execute(
+          action: action,
+          path: args['path'] as String?,
+          url: args['url'] as String?,
+          branch: args['branch'] as String?,
+          name: args['name'] as String?,
+          oldName: args['old_name'] as String?,
+          newName: args['new_name'] as String?,
+          message: args['message'] as String?,
+          filepattern: args['filepattern'] as String?,
+          remote: args['remote'] as String?,
+          ref: args['ref'] as String?,
+          stashRef: args['stash_ref'] as String?,
+          mode: args['mode'] as String?,
+          authorName: args['author_name'] as String?,
+          authorEmail: args['author_email'] as String?,
+          username: args['username'] as String?,
+          password: args['password'] as String?,
+          startPoint: args['start_point'] as String?,
+          staged: args['staged'] as bool?,
+          cached: args['cached'] as bool?,
+          amend: args['amend'] as bool?,
+          force: args['force'] as bool?,
+          bare: args['bare'] as bool?,
+          all: args['all'] as bool?,
+          tags: args['tags'] as bool?,
+          createBranch: args['create_branch'] as bool?,
+          includeUntracked: args['include_untracked'] as bool?,
+          directories: args['directories'] as bool?,
+          dryRun: args['dry_run'] as bool?,
+          drop: args['drop'] as bool?,
+          maxCount: args['max_count'] as int?,
         );
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);

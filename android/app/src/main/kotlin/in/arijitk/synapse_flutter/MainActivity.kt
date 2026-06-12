@@ -20,8 +20,10 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "in.arijitk.synapse_flutter/shortcuts"
     private val FS_CHANNEL = "in.arijitk.synapse_flutter/file_system"
+    private val GIT_CHANNEL = "in.arijitk.synapse_flutter/git"
     private var pendingShortcut: String? = null
     private var methodChannel: MethodChannel? = null
+    private val gitService = GitService()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -57,6 +59,12 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+
+        // ── Git channel ─────────────────────────────────────────────────
+        val gitChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, GIT_CHANNEL)
+        gitChannel.setMethodCallHandler { call, result ->
+            gitService.handle(call, result)
         }
     }
 

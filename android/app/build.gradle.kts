@@ -75,4 +75,9 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // JGit – pure Java Git library for local + remote Git operations
+    implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
+    // SSH transport for JGit (push/pull over SSH)
+    implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:6.10.0.202406032230-r")
 }

@@ -30,6 +30,9 @@ class AgentExecutor {
   final McpClient _mcpClient;
   final LuaExecutor _luaExecutor;
 
+  /// Whether the current execution has been cancelled by the caller.
+  bool _cancelled = false;
+
   AgentExecutor({
     LlmApiClient? apiClient,
     McpClient? mcpClient,
@@ -37,6 +40,15 @@ class AgentExecutor {
   })  : _apiClient = apiClient ?? LlmApiClient(),
         _mcpClient = mcpClient ?? McpClient(),
         _luaExecutor = luaExecutor ?? LuaExecutor();
+
+  /// Abort the currently running agent execution.
+  ///
+  /// Sets the cancellation flag and closes the active HTTP stream so the
+  /// streaming loop and tool-call loop exit as soon as possible.
+  void abort() {
+    _cancelled = true;
+    _apiClient.abortStream();
+  }
 
   /// Execute an [agent] with the given [task] using the specified [model].
   ///
@@ -50,6 +62,9 @@ class AgentExecutor {
     TokenCallback? onToken,
     ToolCallCallback? onToolCall,
   }) async {
+    // Reset cancellation flag for this run.
+    _cancelled = false;
+
     try {
       // Build the initial conversation for this agent
       final conversationHistory = _buildInitialHistory(agent, task);
@@ -106,9 +121,18 @@ class AgentExecutor {
         onToolCall: onToolCall,
       );
 
+      if (_cancelled) {
+        return AgentResult.failure('Agent "${agent.name}" was cancelled.');
+      }
+
       return AgentResult(content: result);
     } catch (e) {
+      if (_cancelled) {
+        return AgentResult.failure('Agent "${agent.name}" was cancelled.');
+      }
       return AgentResult.failure('Agent "${agent.name}" failed: $e');
+    } finally {
+      _cancelled = false;
     }
   }
 
@@ -159,6 +183,7 @@ class AgentExecutor {
     var toolCallHandled = false;
 
     await for (final event in eventStream) {
+      if (_cancelled) break;
       switch (event) {
         case TokenEvent():
           builder.write(event.text);
@@ -209,6 +234,8 @@ class AgentExecutor {
     final results = <String, String>{}; // toolCallId -> result
 
     for (final call in toolCalls) {
+      if (_cancelled) break;
+
       final toolName = call.function.name;
       if (toolName.isEmpty) continue;
 
@@ -244,6 +271,9 @@ class AgentExecutor {
       results[call.id] = resultContent;
       onToolCall?.call(toolName, call.function.arguments, resultContent);
     }
+
+    // If cancelled mid-execution, stop the tool-calling chain immediately.
+    if (_cancelled) return '';
 
     // Build extended history with tool calls + results
     final extendedHistory = originalHistory.toList();

@@ -1077,6 +1077,7 @@ class ChatController extends ChangeNotifier {
     if (!isGenerating) return;
     _cancelled = true;
     _apiClient.abortStream();
+    _agentExecutor.abort();
     notifyListeners();
   }
 
@@ -1333,6 +1334,9 @@ class ChatController extends ChangeNotifier {
       } else {
         resultContent = "Error: Tool '$toolName' not found";
       }
+
+      // If cancelled while the tool was executing, break immediately.
+      if (_cancelled) break;
 
       // Update the entry with result, preserving round and thinkingText.
       final entryIdx = allToolCallEntries.indexWhere((e) => e.id == call.id);
@@ -1626,6 +1630,14 @@ class ChatController extends ChangeNotifier {
     // Mark activity as complete
     activity.isRunning = false;
     activity.isComplete = true;
+    if (_cancelled) {
+      activity.error = 'Cancelled';
+      subAgentActivity.notify();
+      if (toolCallId != null) {
+        completedSubAgentActivities[toolCallId] = activity;
+      }
+      return 'Sub-agent "$agentName" was cancelled.';
+    }
     if (!result.success) {
       activity.error = result.error;
     } else {

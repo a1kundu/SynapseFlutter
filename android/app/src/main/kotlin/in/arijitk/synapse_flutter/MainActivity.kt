@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.os.storage.StorageManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -45,6 +46,14 @@ class MainActivity : FlutterActivity() {
                 "requestFilePermission" -> {
                     requestFilePermission()
                     result.success(true)
+                }
+                "getDiskUsage" -> {
+                    val path = call.argument<String>("path")
+                    if (path != null) {
+                        result.success(getDiskUsage(path))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "path is required", null)
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -184,6 +193,22 @@ class MainActivity : FlutterActivity() {
         }
 
         return result
+    }
+
+    /**
+     * Get disk usage stats for the volume containing the given path.
+     * Returns total, free, and used bytes via StatFs.
+     */
+    private fun getDiskUsage(path: String): Map<String, Any> {
+        val stat = StatFs(path)
+        val totalBytes = stat.totalBytes
+        val freeBytes = stat.availableBytes
+        val usedBytes = totalBytes - freeBytes
+        return mapOf(
+            "total" to totalBytes,
+            "free" to freeBytes,
+            "used" to usedBytes
+        )
     }
 
     companion object {

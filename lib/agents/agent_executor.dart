@@ -9,6 +9,7 @@ import '../services/memory_service.dart';
 import '../services/notification_service.dart';
 import '../services/rest_client_service.dart';
 import '../services/file_system_service.dart';
+import '../services/app_manager_service.dart';
 import '../services/ssh_service.dart';
 import '../services/web_search_service.dart';
 import '../services/web_crawler.dart';
@@ -422,6 +423,16 @@ class AgentExecutor {
           length: args['length'] as int?,
           lines: args['lines'] as int?,
           maxDepth: args['max_depth'] as int?,
+        );
+      case 'app_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) return 'Error: "action" is required.';
+        return await AppManagerService.execute(
+          action: action,
+          packageName: args['package_name'] as String?,
+          query: args['query'] as String?,
+          includeSystemApps: args['include_system_apps'] as bool? ?? false,
+          limit: args['limit'] as int?,
         );
       default:
         return "Error: Unknown system tool '$toolName'";

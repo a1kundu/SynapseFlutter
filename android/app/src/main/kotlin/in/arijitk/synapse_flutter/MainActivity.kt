@@ -2,6 +2,9 @@ package `in`.arijitk.synapse_flutter
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -20,6 +23,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "in.arijitk.synapse_flutter/shortcuts"
     private val FS_CHANNEL = "in.arijitk.synapse_flutter/file_system"
+    private val APP_CHANNEL = "in.arijitk.synapse_flutter/app_manager"
     private var pendingShortcut: String? = null
     private var methodChannel: MethodChannel? = null
 
@@ -53,6 +57,55 @@ class MainActivity : FlutterActivity() {
                         result.success(getDiskUsage(path))
                     } else {
                         result.error("INVALID_ARGUMENT", "path is required", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // ── App manager channel ──────────────────────────────────────────
+        val appChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_CHANNEL)
+        appChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInstalledApps" -> {
+                    val includeSystemApps = call.argument<Boolean>("includeSystemApps") ?: false
+                    result.success(getInstalledApps(includeSystemApps))
+                }
+                "getAppInfo" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName != null) {
+                        val info = getAppInfo(packageName)
+                        if (info != null) {
+                            result.success(info)
+                        } else {
+                            result.error("APP_NOT_FOUND", "App not found: $packageName", null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "packageName is required", null)
+                    }
+                }
+                "launchApp" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName != null) {
+                        result.success(launchApp(packageName))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "packageName is required", null)
+                    }
+                }
+                "isAppInstalled" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName != null) {
+                        result.success(isAppInstalled(packageName))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "packageName is required", null)
+                    }
+                }
+                "openAppSettings" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName != null) {
+                        result.success(openAppSettings(packageName))
+                    } else {
+                        result.error("INVALID_ARGUMENT", "packageName is required", null)
                     }
                 }
                 else -> result.notImplemented()
@@ -209,6 +262,136 @@ class MainActivity : FlutterActivity() {
             "free" to freeBytes,
             "used" to usedBytes
         )
+    }
+
+    // ── App manager helpers ────────────────────────────────────────────────
+
+    /**
+     * Get a list of all installed apps with basic info.
+     * If [includeSystemApps] is false, only user-installed apps are returned.
+     */
+    private fun getInstalledApps(includeSystemApps: Boolean): List<Map<String, Any?>> {
+        val pm = packageManager
+        val packages: List<PackageInfo> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledPackages(0)
+        }
+
+        val result = mutableListOf<Map<String, Any?>>()
+        for (pkg in packages) {
+            val appInfo = pkg.applicationInfo ?: continue
+            val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (!includeSystemApps && isSystem) continue
+
+            val map = mutableMapOf<String, Any?>()
+            map["appName"] = pm.getApplicationLabel(appInfo).toString()
+            map["packageName"] = pkg.packageName
+            map["versionName"] = pkg.versionName
+            map["isSystemApp"] = isSystem
+            result.add(map)
+        }
+        return result
+    }
+
+    /**
+     * Get detailed information about a specific app by package name.
+     * Returns null if the app is not found.
+     */
+    private fun getAppInfo(packageName: String): Map<String, Any?>? {
+        val pm = packageManager
+        return try {
+            val pkgInfo: PackageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+            }
+            val appInfo = pkgInfo.applicationInfo ?: return null
+            val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+
+            val map = mutableMapOf<String, Any?>()
+            map["appName"] = pm.getApplicationLabel(appInfo).toString()
+            map["packageName"] = pkgInfo.packageName
+            map["versionName"] = pkgInfo.versionName
+            map["versionCode"] = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pkgInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pkgInfo.versionCode.toLong()
+            }
+            map["isSystemApp"] = isSystem
+            map["isEnabled"] = appInfo.enabled
+            map["installedAt"] = pkgInfo.firstInstallTime
+            map["updatedAt"] = pkgInfo.lastUpdateTime
+            map["dataDir"] = appInfo.dataDir
+            map["targetSdkVersion"] = appInfo.targetSdkVersion
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                map["minSdkVersion"] = appInfo.minSdkVersion
+            }
+
+            // Permissions
+            val permissions = pkgInfo.requestedPermissions
+            if (permissions != null) {
+                map["permissions"] = permissions.toList()
+            }
+
+            map
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
+    }
+
+    /**
+     * Launch an app by its package name.
+     * Returns true if the launch intent was found and started, false otherwise.
+     */
+    private fun launchApp(packageName: String): Boolean {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
+        return true
+    }
+
+    /**
+     * Check if an app is installed by package name.
+     */
+    private fun isAppInstalled(packageName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
+    /**
+     * Open the Android system settings page for a specific app.
+     * Returns true if the settings page was opened successfully.
+     */
+    private fun openAppSettings(packageName: String): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     companion object {

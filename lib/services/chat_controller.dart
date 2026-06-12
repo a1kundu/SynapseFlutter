@@ -14,6 +14,7 @@ import 'notification_service.dart';
 import 'rest_client_service.dart';
 import 'memory_service.dart';
 import 'file_system_service.dart';
+import 'app_manager_service.dart';
 import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
@@ -558,6 +559,68 @@ class ChatController extends ChangeNotifier {
               'type': 'integer',
               'description':
                   'Maximum directory depth for the tree action. Defaults to 10.',
+            },
+          },
+          'required': ['action'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'app_manager',
+        description:
+            'Access and manage all installed Android apps on the device. '
+            'List, search, inspect, and launch any app.\n\n'
+            'Actions:\n'
+            '- **list_apps**: List all installed apps with name, package name, and version. '
+            'Set "include_system_apps" to true to include system/pre-installed apps. '
+            'Use "limit" to cap results.\n'
+            '- **search_apps**: Search apps by name or package name. Requires "query".\n'
+            '- **app_info**: Get detailed info about a specific app (version, SDK targets, '
+            'permissions, install/update dates, data directory). Requires "package_name".\n'
+            '- **launch_app**: Launch/open an app. Requires "package_name".\n'
+            '- **is_installed**: Check if a specific app is installed. Requires "package_name".\n'
+            '- **open_app_settings**: Open the Android system settings page for an app '
+            '(useful for managing permissions, storage, etc.). Requires "package_name".\n\n'
+            'Use "list_apps" or "search_apps" first to discover package names, '
+            'then use those package names with other actions.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'list_apps', 'search_apps', 'app_info',
+                'launch_app', 'is_installed', 'open_app_settings',
+              ],
+              'description':
+                  'The app management operation to perform.',
+            },
+            'package_name': {
+              'type': 'string',
+              'description':
+                  'The app\'s package name (e.g. "com.whatsapp", "com.google.android.youtube"). '
+                  'Required for app_info, launch_app, is_installed, and open_app_settings.',
+            },
+            'query': {
+              'type': 'string',
+              'description':
+                  'Search query to find apps by name or package name. '
+                  'Required for search_apps.',
+            },
+            'include_system_apps': {
+              'type': 'boolean',
+              'description':
+                  'If true, include system/pre-installed apps in list_apps and search_apps. '
+                  'Defaults to false (only user-installed apps).',
+            },
+            'limit': {
+              'type': 'integer',
+              'description':
+                  'Maximum number of apps to return for list_apps and search_apps. '
+                  'Omit or set to 0 for no limit.',
             },
           },
           'required': ['action'],
@@ -1705,6 +1768,18 @@ class ChatController extends ChangeNotifier {
           length: args['length'] as int?,
           lines: args['lines'] as int?,
           maxDepth: args['max_depth'] as int?,
+        );
+      case 'app_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) {
+          return 'Error: "action" is required.';
+        }
+        return await AppManagerService.execute(
+          action: action,
+          packageName: args['package_name'] as String?,
+          query: args['query'] as String?,
+          includeSystemApps: args['include_system_apps'] as bool? ?? false,
+          limit: args['limit'] as int?,
         );
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);

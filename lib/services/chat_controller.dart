@@ -349,7 +349,8 @@ class ChatController extends ChangeNotifier {
             'Persistent memory store that survives across chat sessions. '
             'Use this to save, recall, search, list, or delete information '
             'the user wants remembered (preferences, facts, notes, context). '
-            'Memories are stored as key-value pairs with optional tags.',
+            'Memories are organised by category and searchable via ranked '
+            'full-text search (BM25).',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -358,10 +359,10 @@ class ChatController extends ChangeNotifier {
               'enum': ['save', 'recall', 'search', 'list', 'delete'],
               'description':
                   'The action to perform:\n'
-                  '- save: Store or update a memory.\n'
+                  '- save: Store or update a memory (requires key, content; optional category, tags).\n'
                   '- recall: Retrieve a memory by exact key.\n'
-                  '- search: Find memories by substring match in key, content, or tags.\n'
-                  '- list: List all memories (optionally filtered by tag).\n'
+                  '- search: Find memories using natural language queries (BM25-ranked).\n'
+                  '- list: List all memories (optionally filtered by category and/or tag).\n'
                   '- delete: Remove a memory by key.',
             },
             'key': {
@@ -372,8 +373,26 @@ class ChatController extends ChangeNotifier {
             },
             'content': {
               'type': 'string',
+              'description': 'The content to store. Required for save.',
+            },
+            'category': {
+              'type': 'string',
+              'enum': [
+                'personal',
+                'project',
+                'instruction',
+                'fact',
+                'context',
+                'general',
+              ],
               'description':
-                  'The content to store. Required for save.',
+                  'Category for the memory. Used with save and list.\n'
+                  '- personal: name, preferences, habits, personal info.\n'
+                  '- project: codebase structure, tech stack, conventions.\n'
+                  '- instruction: how the user wants things done.\n'
+                  '- fact: reference data, API keys, URLs, definitions.\n'
+                  '- context: ongoing tasks, decisions, session context.\n'
+                  '- general: default catch-all.',
             },
             'tags': {
               'type': 'array',
@@ -385,7 +404,9 @@ class ChatController extends ChangeNotifier {
             'query': {
               'type': 'string',
               'description':
-                  'Search query string. Required for the search action.',
+                  'Search query string for the search action. Use natural '
+                  'language — the search engine tokenizes and ranks results '
+                  'by relevance.',
             },
           },
           'required': ['action'],
@@ -1531,11 +1552,17 @@ class ChatController extends ChangeNotifier {
         if (content.trim().isEmpty) {
           return 'Error: "content" is required for save.';
         }
+        final category = args['category'] as String?;
         final tags = (args['tags'] as List<dynamic>?)
                 ?.map((e) => e.toString())
                 .toList() ??
             [];
-        return memory.save(key: key, content: content, tags: tags);
+        return memory.save(
+          key: key,
+          content: content,
+          category: category,
+          tags: tags,
+        );
       case 'recall':
         final key = args['key'] as String? ?? '';
         if (key.trim().isEmpty) return 'Error: "key" is required for recall.';
@@ -1547,9 +1574,11 @@ class ChatController extends ChangeNotifier {
         }
         return memory.search(query);
       case 'list':
+        final category = args['category'] as String?;
         final tags = args['tags'] as List<dynamic>?;
-        final tag = tags != null && tags.isNotEmpty ? tags.first.toString() : null;
-        return memory.list(tag: tag);
+        final tag =
+            tags != null && tags.isNotEmpty ? tags.first.toString() : null;
+        return memory.list(category: category, tag: tag);
       case 'delete':
         final key = args['key'] as String? ?? '';
         if (key.trim().isEmpty) return 'Error: "key" is required for delete.';

@@ -419,11 +419,17 @@ class AgentExecutor {
         if (content.trim().isEmpty) {
           return 'Error: "content" is required for save.';
         }
+        final category = args['category'] as String?;
         final tags = (args['tags'] as List<dynamic>?)
                 ?.map((e) => e.toString())
                 .toList() ??
             [];
-        return memory.save(key: key, content: content, tags: tags);
+        return memory.save(
+          key: key,
+          content: content,
+          category: category,
+          tags: tags,
+        );
       case 'recall':
         final key = args['key'] as String? ?? '';
         if (key.trim().isEmpty) return 'Error: "key" is required for recall.';
@@ -435,9 +441,11 @@ class AgentExecutor {
         }
         return memory.search(query);
       case 'list':
+        final category = args['category'] as String?;
         final tags = args['tags'] as List<dynamic>?;
-        final tag = tags != null && tags.isNotEmpty ? tags.first.toString() : null;
-        return memory.list(tag: tag);
+        final tag =
+            tags != null && tags.isNotEmpty ? tags.first.toString() : null;
+        return memory.list(category: category, tag: tag);
       case 'delete':
         final key = args['key'] as String? ?? '';
         if (key.trim().isEmpty) return 'Error: "key" is required for delete.';

@@ -30,12 +30,13 @@ jobs:
           echo "Looking for open PRs targeting '${BASE_BRANCH}'..."
 
           # Fetch open PRs targeting the pushed branch (same-repo only, skip forks)
+          # Include author login for @mention in comments
           gh pr list \
             --repo "${REPO}" \
             --base "${BASE_BRANCH}" \
             --state open \
-            --json number,headRefName,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository == false)]' \
+            --json number,headRefName,isCrossRepository,author \
+            --jq '[.[] | select(.isCrossRepository == false) | {number, headRefName, author: .author.login}]' \
             > /tmp/prs.json
 
           COUNT=$(jq length /tmp/prs.json)
@@ -61,14 +62,31 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Ensure rebase-conflict label exists
+        if: steps.prs.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.REBASE_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Create the label if it doesn't already exist (idempotent)
+          gh label create "rebase-conflict" \
+            --repo "${REPO}" \
+            --color "D93F0B" \
+            --description "Auto-rebase failed due to merge conflicts" \
+            --force
+
       - name: Rebase each PR
         if: steps.prs.outputs.count != '0'
         env:
           GH_TOKEN: ${{ secrets.REBASE_TOKEN }}
           REPO: ${{ github.repository }}
           BASE_BRANCH: ${{ github.ref_name }}
+          TRIGGER_SHA: ${{ github.sha }}
+          TRIGGER_ACTOR: ${{ github.actor }}
         run: |
           BASE_SHA=$(git rev-parse --short "origin/${BASE_BRANCH}")
+          TRIGGER_SHA_SHORT=$(echo "${TRIGGER_SHA}" | cut -c1-7)
+          TRIGGER_MSG=$(git log -1 --pretty=format:"%s" "${TRIGGER_SHA}" 2>/dev/null || echo "unknown")
           TOTAL=$(jq length /tmp/prs.json)
           SUCCESS=0
           SKIPPED=0
@@ -76,10 +94,11 @@ jobs:
           for i in $(seq 0 $((TOTAL - 1))); do
             PR_NUM=$(jq -r ".[$i].number" /tmp/prs.json)
             BRANCH=$(jq -r ".[$i].headRefName" /tmp/prs.json)
+            AUTHOR=$(jq -r ".[$i].author" /tmp/prs.json)
 
             echo ""
             echo "=========================================="
-            echo "PR #${PR_NUM}  (${BRANCH} -> ${BASE_BRANCH})"
+            echo "PR #${PR_NUM}  (${BRANCH} -> ${BASE_BRANCH})  by @${AUTHOR}"
             echo "=========================================="
 
             # Fetch the latest PR branch
@@ -100,27 +119,53 @@ jobs:
                 echo "Push succeeded for PR #${PR_NUM}."
                 SUCCESS=$((SUCCESS + 1))
 
-                gh pr comment "${PR_NUM}" \
+                # Remove conflict label if it was previously applied
+                gh pr edit "${PR_NUM}" \
                   --repo "${REPO}" \
-                  --body ":white_check_mark: **Auto-rebased** onto latest \`${BASE_BRANCH}\` (\`${BASE_SHA}\`). No conflicts detected." \
+                  --remove-label "rebase-conflict" 2>/dev/null || true
+
+                BODY=":white_check_mark: **Auto-rebased** onto latest \`${BASE_BRANCH}\` (\`${BASE_SHA}\`). No conflicts detected."
+                BODY="${BODY}"$'\n\n'"---"$'\n'"> Triggered by [\`${TRIGGER_SHA_SHORT}\`](https://github.com/${REPO}/commit/${TRIGGER_SHA}) — *${TRIGGER_MSG}* (pushed by @${TRIGGER_ACTOR})"
+
+                gh pr comment "${PR_NUM}" --repo "${REPO}" --body "${BODY}" \
                   || echo "WARN: Failed to post success comment on PR #${PR_NUM}."
               else
                 echo "SKIP: Force-push failed for PR #${PR_NUM} (remote branch may have moved)."
                 SKIPPED=$((SKIPPED + 1))
 
-                gh pr comment "${PR_NUM}" \
-                  --repo "${REPO}" \
-                  --body ":warning: Auto-rebase onto \`${BASE_BRANCH}\` succeeded locally but the push was rejected (the branch may have been updated concurrently). No action needed — a subsequent run will retry." \
+                BODY=":warning: Auto-rebase onto \`${BASE_BRANCH}\` succeeded locally but the push was rejected (the branch may have been updated concurrently). No action needed — a subsequent run will retry."
+                BODY="${BODY}"$'\n\n'"---"$'\n'"> Triggered by [\`${TRIGGER_SHA_SHORT}\`](https://github.com/${REPO}/commit/${TRIGGER_SHA}) — *${TRIGGER_MSG}* (pushed by @${TRIGGER_ACTOR})"
+
+                gh pr comment "${PR_NUM}" --repo "${REPO}" --body "${BODY}" \
                   || echo "WARN: Failed to post push-failure comment on PR #${PR_NUM}."
               fi
             else
-              echo "SKIP: Conflicts detected for PR #${PR_NUM}."
+              # ── Rebase failed: collect conflict details BEFORE aborting ──
+              CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "(unable to determine)")
+              CONFLICT_COUNT=$(echo "${CONFLICT_FILES}" | grep -c . 2>/dev/null || echo "?")
+
+              echo "SKIP: Conflicts detected for PR #${PR_NUM} in ${CONFLICT_COUNT} file(s)."
               git rebase --abort
               SKIPPED=$((SKIPPED + 1))
 
-              gh pr comment "${PR_NUM}" \
+              # Build a markdown file list
+              FILE_LIST=""
+              while IFS= read -r f; do
+                [ -n "$f" ] && FILE_LIST="${FILE_LIST}"$'\n'"- \`${f}\`"
+              done <<< "${CONFLICT_FILES}"
+
+              # Apply conflict label as a visible badge
+              gh pr edit "${PR_NUM}" \
                 --repo "${REPO}" \
-                --body ":x: **Could not auto-rebase** onto latest \`${BASE_BRANCH}\` (\`${BASE_SHA}\`): merge conflicts detected. Please rebase manually." \
+                --add-label "rebase-conflict" \
+                || echo "WARN: Failed to add rebase-conflict label to PR #${PR_NUM}."
+
+              BODY=":x: **Auto-rebase failed** — could not rebase \`${BRANCH}\` onto latest \`${BASE_BRANCH}\` (\`${BASE_SHA}\`)."
+              BODY="${BODY}"$'\n\n'"@${AUTHOR} — please rebase manually to resolve the conflicts below."
+              BODY="${BODY}"$'\n\n'"<details>"$'\n'"<summary><strong>${CONFLICT_COUNT} conflicting file(s)</strong></summary>"$'\n'"${FILE_LIST}"$'\n'"</details>"
+              BODY="${BODY}"$'\n\n'"---"$'\n'"> Triggered by [\`${TRIGGER_SHA_SHORT}\`](https://github.com/${REPO}/commit/${TRIGGER_SHA}) — *${TRIGGER_MSG}* (pushed by @${TRIGGER_ACTOR})"
+
+              gh pr comment "${PR_NUM}" --repo "${REPO}" --body "${BODY}" \
                 || echo "WARN: Failed to post conflict comment on PR #${PR_NUM}."
             fi
 

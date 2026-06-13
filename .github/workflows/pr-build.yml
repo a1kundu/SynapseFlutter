@@ -39,6 +39,9 @@ jobs:
           channel: beta
           cache: true
 
+      - name: Install ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
       - name: Badge icons with PR number
         run: |
           PR="PR #${{ env.PR_NUMBER }}"

@@ -44,7 +44,7 @@ jobs:
 
       - name: Badge icons with PR number
         run: |
-          PR="PR #${{ env.PR_NUMBER }}"
+          PR="#${{ env.PR_NUMBER }}"
           RES="android/app/src/main/res"
 
           # ImageMagick v7 uses 'magick', v6 uses 'convert'/'identify'
@@ -61,16 +61,25 @@ jobs:
             [ -f "$file" ] || return 0
             local size
             size=$($IDENTIFY -format "%w" "$file")
-            local band_h=$(( size / 4 ))
-            local font_size=$(( size / 5 ))
-            local y_start=$(( size - band_h ))
-            local text_y=$(( band_h / 4 ))
+            local font_size=$(( size / 4 ))
+            local pad=$(( size / 12 ))
+            # Render text to measure its bounding box
+            local metrics
+            metrics=$($MAGICK -size "x${font_size}" -font DejaVu-Sans-Bold \
+              -pointsize "$font_size" label:"$PR" -format "%wx%h" info:)
+            local tw th
+            tw=${metrics%x*}
+            th=${metrics#*x}
+            local box_w=$(( tw + pad * 2 ))
+            local box_h=$(( th + pad ))
+            local radius=$(( size / 16 ))
+            # Build a rounded-rect box with centered text, composite at icon center
             $MAGICK "$file" \
-              -gravity South \
-              -fill "$fill" -draw "rectangle 0,$y_start,$size,$size" \
-              -fill white -font DejaVu-Sans-Bold -pointsize "$font_size" \
-              -annotate +0+"$text_y" "$PR" \
-              "$file"
+              \( -size "${box_w}x${box_h}" xc:none \
+                 -fill "$fill" -draw "roundrectangle 0,0,$((box_w-1)),$((box_h-1)),$radius,$radius" \
+                 -gravity Center -fill white -font DejaVu-Sans-Bold \
+                 -pointsize "$font_size" -annotate +0+0 "$PR" \) \
+              -gravity Center -composite "$file"
           }
 
           # --- Android launcher icons (color) ---

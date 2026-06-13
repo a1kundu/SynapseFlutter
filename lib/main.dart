@@ -15,6 +15,9 @@ import 'utils/snackbar_service.dart';
 import 'screens/settings_screen.dart';
 import 'screens/home_shell.dart';
 
+/// PR number injected at build time via --dart-define=PR_NUMBER=...
+const _prNumber = String.fromEnvironment('PR_NUMBER', defaultValue: '');
+
 /// Global navigator key -- used to show dialogs from notification taps.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -137,6 +140,13 @@ class _MyAppState extends State<MyApp> {
                         content = Banner(
                           message: 'debug build',
                           location: BannerLocation.topStart,
+                          child: content,
+                        );
+                      } else if (_prNumber.isNotEmpty) {
+                        content = Banner(
+                          message: 'PR #$_prNumber',
+                          location: BannerLocation.topStart,
+                          color: Colors.blue,
                           child: content,
                         );
                       }

@@ -44,16 +44,25 @@ jobs:
           PR="PR #${{ env.PR_NUMBER }}"
           RES="android/app/src/main/res"
 
+          # ImageMagick v7 uses 'magick', v6 uses 'convert'/'identify'
+          if command -v magick &>/dev/null; then
+            MAGICK="magick"
+            IDENTIFY="magick identify"
+          else
+            MAGICK="convert"
+            IDENTIFY="identify"
+          fi
+
           badge_icon () {
             local file="$1" fill="$2"
             [ -f "$file" ] || return 0
             local size
-            size=$(identify -format "%w" "$file")
+            size=$($IDENTIFY -format "%w" "$file")
             local band_h=$(( size / 4 ))
             local font_size=$(( size / 5 ))
             local y_start=$(( size - band_h ))
             local text_y=$(( band_h / 4 ))
-            convert "$file" \
+            $MAGICK "$file" \
               -gravity South \
               -fill "$fill" -draw "rectangle 0,$y_start,$size,$size" \
               -fill white -font DejaVu-Sans-Bold -pointsize "$font_size" \

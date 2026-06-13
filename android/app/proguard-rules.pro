@@ -5,6 +5,7 @@
 
 # JMX monitoring (desktop-only)
 -dontwarn javax.management.**
+-dontwarn java.lang.management.**
 
 # GSSAPI / Kerberos Negotiate auth (not used on Android)
 -dontwarn org.ietf.jgss.**

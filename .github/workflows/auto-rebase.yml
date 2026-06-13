@@ -1,0 +1,135 @@
+name: Auto Rebase Open PRs
+
+on:
+  push:
+    branches: ['**']
+
+concurrency:
+  group: auto-rebase-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-rebase:
+    runs-on: ubuntu-latest
+    # Never fail the pipeline regardless of what happens
+    continue-on-error: true
+
+    steps:
+      - name: Find open PRs targeting this branch
+        id: prs
+        env:
+          GH_TOKEN: ${{ secrets.REBASE_TOKEN }}
+          REPO: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          BASE_BRANCH: ${{ github.ref_name }}
+        run: |
+          echo "Looking for open PRs targeting '${BASE_BRANCH}'..."
+
+          # Fetch open PRs targeting the pushed branch (same-repo only, skip forks)
+          gh pr list \
+            --repo "${REPO}" \
+            --base "${BASE_BRANCH}" \
+            --state open \
+            --json number,headRefName,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository == false)]' \
+            > /tmp/prs.json
+
+          COUNT=$(jq length /tmp/prs.json)
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No open same-repo PRs targeting '${BASE_BRANCH}'. Nothing to do."
+          else
+            echo "Found ${COUNT} PR(s) to rebase onto '${BASE_BRANCH}':"
+            jq -r '.[] | "  PR #\(.number) — \(.headRefName)"' /tmp/prs.json
+          fi
+
+      - name: Checkout
+        if: steps.prs.outputs.count != '0'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.REBASE_TOKEN }}
+
+      - name: Configure git
+        if: steps.prs.outputs.count != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Rebase each PR
+        if: steps.prs.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.REBASE_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.ref_name }}
+        run: |
+          BASE_SHA=$(git rev-parse --short "origin/${BASE_BRANCH}")
+          TOTAL=$(jq length /tmp/prs.json)
+          SUCCESS=0
+          SKIPPED=0
+
+          for i in $(seq 0 $((TOTAL - 1))); do
+            PR_NUM=$(jq -r ".[$i].number" /tmp/prs.json)
+            BRANCH=$(jq -r ".[$i].headRefName" /tmp/prs.json)
+
+            echo ""
+            echo "=========================================="
+            echo "PR #${PR_NUM}  (${BRANCH} -> ${BASE_BRANCH})"
+            echo "=========================================="
+
+            # Fetch the latest PR branch
+            if ! git fetch origin "${BRANCH}"; then
+              echo "SKIP: Could not fetch branch '${BRANCH}'."
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            # Create a temporary local branch for the rebase
+            git checkout -B "auto-rebase/${PR_NUM}" "origin/${BRANCH}"
+
+            # Attempt the rebase
+            if git rebase "origin/${BASE_BRANCH}"; then
+              echo "Rebase succeeded. Pushing with --force-with-lease..."
+
+              if git push origin "auto-rebase/${PR_NUM}:${BRANCH}" --force-with-lease; then
+                echo "Push succeeded for PR #${PR_NUM}."
+                SUCCESS=$((SUCCESS + 1))
+
+                gh pr comment "${PR_NUM}" \
+                  --repo "${REPO}" \
+                  --body ":white_check_mark: **Auto-rebased** onto latest \`${BASE_BRANCH}\` (\`${BASE_SHA}\`). No conflicts detected." \
+                  || echo "WARN: Failed to post success comment on PR #${PR_NUM}."
+              else
+                echo "SKIP: Force-push failed for PR #${PR_NUM} (remote branch may have moved)."
+                SKIPPED=$((SKIPPED + 1))
+
+                gh pr comment "${PR_NUM}" \
+                  --repo "${REPO}" \
+                  --body ":warning: Auto-rebase onto \`${BASE_BRANCH}\` succeeded locally but the push was rejected (the branch may have been updated concurrently). No action needed — a subsequent run will retry." \
+                  || echo "WARN: Failed to post push-failure comment on PR #${PR_NUM}."
+              fi
+            else
+              echo "SKIP: Conflicts detected for PR #${PR_NUM}."
+              git rebase --abort
+              SKIPPED=$((SKIPPED + 1))
+
+              gh pr comment "${PR_NUM}" \
+                --repo "${REPO}" \
+                --body ":x: **Could not auto-rebase** onto latest \`${BASE_BRANCH}\` (\`${BASE_SHA}\`): merge conflicts detected. Please rebase manually." \
+                || echo "WARN: Failed to post conflict comment on PR #${PR_NUM}."
+            fi
+
+            # Return to a clean state for the next iteration
+            git checkout "${BASE_BRANCH}" 2>/dev/null || git checkout --detach
+            git branch -D "auto-rebase/${PR_NUM}" 2>/dev/null || true
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "Done. Rebased: ${SUCCESS}/${TOTAL}  Skipped: ${SKIPPED}/${TOTAL}"
+          echo "=========================================="

@@ -14,6 +14,7 @@ import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.transport.CredentialsProvider
 import org.eclipse.jgit.transport.URIish
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
+import org.eclipse.jgit.dircache.DirCacheIterator
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -250,7 +251,7 @@ class GitService {
                         if (headId != null) {
                             headTree.reset(it, headId)
                         }
-                        val entries = formatter.scan(headTree, repo.readDirCache())
+                        val entries: List<org.eclipse.jgit.diff.DiffEntry> = formatter.scan(headTree, DirCacheIterator(repo.readDirCache()))
                         for (entry in entries) {
                             formatter.format(entry)
                         }

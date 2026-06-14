@@ -13,6 +13,7 @@ import 'mcp_client.dart';
 import 'notification_service.dart';
 import 'rest_client_service.dart';
 import 'memory_service.dart';
+import 'file_system_service.dart';
 import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
@@ -407,6 +408,156 @@ class ChatController extends ChangeNotifier {
                   'Search query string for the search action. Use natural '
                   'language — the search engine tokenizes and ranks results '
                   'by relevance.',
+            },
+          },
+          'required': ['action'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'file_manager',
+        description:
+            'Access the Android local file system — phone memory, SD card, and USB storage. '
+            'Full-featured file manager with browsing, searching (name regex + content grep), '
+            'reading/writing (chunked byte-range for large files), appending, '
+            'copying, moving, deleting, renaming (batch regex), creating directories, '
+            'querying metadata, tree visualization, disk usage, checksums, '
+            'diffing files, and ZIP archive/extract.\n\n'
+            'Actions:\n'
+            '- **list_storage**: List all storage volumes (internal, SD card, USB) with paths.\n'
+            '- **list**: List files and folders. Use "limit" to cap results (default: no limit).\n'
+            '- **search**: Search for files/folders by name regex. Requires "path" and "pattern".\n'
+            '- **grep**: Search inside file contents by regex. Requires "path" and "pattern". '
+            'Use "include_filter" (e.g. "*.txt") to filter by filename.\n'
+            '- **read**: Read a text file. Supports chunked reading via "offset" and "length" '
+            '(byte range, default chunk 100 KB). Response includes next offset for continuation.\n'
+            '- **tail**: Read the last N lines of a file. Use "lines" (default 50).\n'
+            '- **write**: Create or overwrite a text file.\n'
+            '- **append**: Append content to a file without overwriting.\n'
+            '- **write_bytes**: Write content at a specific byte offset (patch a section).\n'
+            '- **copy**: Copy a file or directory (recursive=true for directories).\n'
+            '- **move**: Move or rename a file or directory.\n'
+            '- **delete**: Delete a file or directory (recursive=true for non-empty directories).\n'
+            '- **mkdir**: Create a directory (creates parents automatically).\n'
+            '- **rename_batch**: Bulk rename files using regex find/replace. '
+            'Use "dry_run"=true to preview without applying.\n'
+            '- **info**: Get detailed metadata about a file or directory.\n'
+            '- **exists**: Check if a path exists.\n'
+            '- **tree**: Display a directory tree visualization. Use "max_depth" and "limit".\n'
+            '- **disk_usage**: Get free/used/total space for a volume.\n'
+            '- **checksum**: Compute file hash (md5/sha1/sha256). Use "algorithm".\n'
+            '- **diff**: Compare two text files (unified diff). Pass "path" and "destination".\n'
+            '- **archive**: Create a ZIP from a file or directory. Pass "path" and "destination".\n'
+            '- **extract**: Extract a ZIP archive. Pass "path" (.zip) and "destination" (output dir).\n\n'
+            'Start with list_storage to discover available storage paths, then use list '
+            'to browse. Internal storage is typically at /storage/emulated/0.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'list_storage', 'list', 'search', 'grep',
+                'read', 'tail', 'write', 'append', 'write_bytes',
+                'copy', 'move', 'delete', 'mkdir', 'rename_batch',
+                'info', 'exists', 'tree', 'disk_usage',
+                'checksum', 'diff', 'archive', 'extract',
+              ],
+              'description':
+                  'The file system operation to perform.',
+            },
+            'path': {
+              'type': 'string',
+              'description':
+                  'The absolute file or directory path '
+                  '(e.g. "/storage/emulated/0/Documents"). '
+                  'Required for all actions except list_storage.',
+            },
+            'destination': {
+              'type': 'string',
+              'description':
+                  'Destination path for copy, move, diff (file B), '
+                  'archive (output .zip), and extract (output dir).',
+            },
+            'content': {
+              'type': 'string',
+              'description':
+                  'Text content for write, append, and write_bytes actions.',
+            },
+            'pattern': {
+              'type': 'string',
+              'description':
+                  'Regex pattern for search (match file names), grep (match file contents), '
+                  'and rename_batch (match in filenames). '
+                  'Examples: ".*\\.txt\$" (all .txt files), "^IMG_" (files starting with IMG_), '
+                  '"TODO|FIXME" (content search).',
+            },
+            'replacement': {
+              'type': 'string',
+              'description':
+                  'Replacement string for rename_batch. Supports regex capture groups (\$1, \$2).',
+            },
+            'algorithm': {
+              'type': 'string',
+              'enum': ['md5', 'sha1', 'sha256'],
+              'description':
+                  'Hash algorithm for checksum. Defaults to sha256.',
+            },
+            'include_filter': {
+              'type': 'string',
+              'description':
+                  'Filename glob filter for grep (e.g. "*.txt", "*.{dart,yaml}"). '
+                  'Only files matching this pattern will be searched.',
+            },
+            'recursive': {
+              'type': 'boolean',
+              'description':
+                  'If true: list/search/grep traverses subdirectories, copy copies directory trees, '
+                  'delete removes non-empty directories, rename_batch processes subdirectories. '
+                  'Defaults to false.',
+            },
+            'show_hidden': {
+              'type': 'boolean',
+              'description':
+                  'If true, include hidden files/folders (names starting with ".") '
+                  'in listings, search, grep, tree, and rename_batch. Defaults to false.',
+            },
+            'dry_run': {
+              'type': 'boolean',
+              'description':
+                  'If true, rename_batch previews changes without applying them. '
+                  'Defaults to false.',
+            },
+            'limit': {
+              'type': 'integer',
+              'description':
+                  'Maximum number of entries/matches for list, search, grep, and tree. '
+                  'Omit or set to 0 for no limit.',
+            },
+            'offset': {
+              'type': 'integer',
+              'description':
+                  'Byte offset for read (chunked reading) and write_bytes (patch position). '
+                  'Defaults to 0.',
+            },
+            'length': {
+              'type': 'integer',
+              'description':
+                  'Number of bytes to read for the read action. '
+                  'Defaults to 100000 (100 KB). Use with "offset" for chunked reading.',
+            },
+            'lines': {
+              'type': 'integer',
+              'description':
+                  'Number of lines to return for the tail action. Defaults to 50.',
+            },
+            'max_depth': {
+              'type': 'integer',
+              'description':
+                  'Maximum directory depth for the tree action. Defaults to 10.',
             },
           },
           'required': ['action'],
@@ -1532,6 +1683,29 @@ class ChatController extends ChangeNotifier {
         );
       case 'memory_manage':
         return _executeMemoryManage(args);
+      case 'file_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) {
+          return 'Error: "action" is required.';
+        }
+        return await FileSystemService.execute(
+          action: action,
+          path: args['path'] as String?,
+          destination: args['destination'] as String?,
+          content: args['content'] as String?,
+          pattern: args['pattern'] as String?,
+          replacement: args['replacement'] as String?,
+          algorithm: args['algorithm'] as String?,
+          includeFilter: args['include_filter'] as String?,
+          recursive: args['recursive'] as bool? ?? false,
+          showHidden: args['show_hidden'] as bool? ?? false,
+          dryRun: args['dry_run'] as bool? ?? false,
+          limit: args['limit'] as int?,
+          offset: args['offset'] as int?,
+          length: args['length'] as int?,
+          lines: args['lines'] as int?,
+          maxDepth: args['max_depth'] as int?,
+        );
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);
       default:

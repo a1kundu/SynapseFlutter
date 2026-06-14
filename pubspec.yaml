@@ -29,6 +29,8 @@ dependencies:
   # File handling
   file_picker: ^8.0.0+1
   mime: ^2.0.0
+  crypto: ^3.0.6
+  archive: ^4.0.2
 
   # UI
   dynamic_color: ^1.7.0

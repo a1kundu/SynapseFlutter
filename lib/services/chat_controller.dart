@@ -13,6 +13,8 @@ import 'mcp_client.dart';
 import 'notification_service.dart';
 import 'rest_client_service.dart';
 import 'memory_service.dart';
+import 'file_system_service.dart';
+import 'git_service.dart';
 import 'ssh_service.dart';
 import 'web_search_service.dart';
 import 'web_crawler.dart';
@@ -407,6 +409,368 @@ class ChatController extends ChangeNotifier {
                   'Search query string for the search action. Use natural '
                   'language — the search engine tokenizes and ranks results '
                   'by relevance.',
+            },
+          },
+          'required': ['action'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'file_manager',
+        description:
+            'Access the Android local file system — phone memory, SD card, and USB storage. '
+            'Full-featured file manager with browsing, searching (name regex + content grep), '
+            'reading/writing (chunked byte-range for large files), appending, '
+            'copying, moving, deleting, renaming (batch regex), creating directories, '
+            'querying metadata, tree visualization, disk usage, checksums, '
+            'diffing files, and ZIP archive/extract.\n\n'
+            'Actions:\n'
+            '- **list_storage**: List all storage volumes (internal, SD card, USB) with paths.\n'
+            '- **list**: List files and folders. Use "limit" to cap results (default: no limit).\n'
+            '- **search**: Search for files/folders by name regex. Requires "path" and "pattern".\n'
+            '- **grep**: Search inside file contents by regex. Requires "path" and "pattern". '
+            'Use "include_filter" (e.g. "*.txt") to filter by filename.\n'
+            '- **read**: Read a text file. Supports chunked reading via "offset" and "length" '
+            '(byte range, default chunk 100 KB). Response includes next offset for continuation.\n'
+            '- **tail**: Read the last N lines of a file. Use "lines" (default 50).\n'
+            '- **write**: Create or overwrite a text file.\n'
+            '- **append**: Append content to a file without overwriting.\n'
+            '- **write_bytes**: Write content at a specific byte offset (patch a section).\n'
+            '- **copy**: Copy a file or directory (recursive=true for directories).\n'
+            '- **move**: Move or rename a file or directory.\n'
+            '- **delete**: Delete a file or directory (recursive=true for non-empty directories).\n'
+            '- **mkdir**: Create a directory (creates parents automatically).\n'
+            '- **rename_batch**: Bulk rename files using regex find/replace. '
+            'Use "dry_run"=true to preview without applying.\n'
+            '- **info**: Get detailed metadata about a file or directory.\n'
+            '- **exists**: Check if a path exists.\n'
+            '- **tree**: Display a directory tree visualization. Use "max_depth" and "limit".\n'
+            '- **disk_usage**: Get free/used/total space for a volume.\n'
+            '- **checksum**: Compute file hash (md5/sha1/sha256). Use "algorithm".\n'
+            '- **diff**: Compare two text files (unified diff). Pass "path" and "destination".\n'
+            '- **archive**: Create a ZIP from a file or directory. Pass "path" and "destination".\n'
+            '- **extract**: Extract a ZIP archive. Pass "path" (.zip) and "destination" (output dir).\n\n'
+            'Start with list_storage to discover available storage paths, then use list '
+            'to browse. Internal storage is typically at /storage/emulated/0.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'list_storage', 'list', 'search', 'grep',
+                'read', 'tail', 'write', 'append', 'write_bytes',
+                'copy', 'move', 'delete', 'mkdir', 'rename_batch',
+                'info', 'exists', 'tree', 'disk_usage',
+                'checksum', 'diff', 'archive', 'extract',
+              ],
+              'description':
+                  'The file system operation to perform.',
+            },
+            'path': {
+              'type': 'string',
+              'description':
+                  'The absolute file or directory path '
+                  '(e.g. "/storage/emulated/0/Documents"). '
+                  'Required for all actions except list_storage.',
+            },
+            'destination': {
+              'type': 'string',
+              'description':
+                  'Destination path for copy, move, diff (file B), '
+                  'archive (output .zip), and extract (output dir).',
+            },
+            'content': {
+              'type': 'string',
+              'description':
+                  'Text content for write, append, and write_bytes actions.',
+            },
+            'pattern': {
+              'type': 'string',
+              'description':
+                  'Regex pattern for search (match file names), grep (match file contents), '
+                  'and rename_batch (match in filenames). '
+                  'Examples: ".*\\.txt\$" (all .txt files), "^IMG_" (files starting with IMG_), '
+                  '"TODO|FIXME" (content search).',
+            },
+            'replacement': {
+              'type': 'string',
+              'description':
+                  'Replacement string for rename_batch. Supports regex capture groups (\$1, \$2).',
+            },
+            'algorithm': {
+              'type': 'string',
+              'enum': ['md5', 'sha1', 'sha256'],
+              'description':
+                  'Hash algorithm for checksum. Defaults to sha256.',
+            },
+            'include_filter': {
+              'type': 'string',
+              'description':
+                  'Filename glob filter for grep (e.g. "*.txt", "*.{dart,yaml}"). '
+                  'Only files matching this pattern will be searched.',
+            },
+            'recursive': {
+              'type': 'boolean',
+              'description':
+                  'If true: list/search/grep traverses subdirectories, copy copies directory trees, '
+                  'delete removes non-empty directories, rename_batch processes subdirectories. '
+                  'Defaults to false.',
+            },
+            'show_hidden': {
+              'type': 'boolean',
+              'description':
+                  'If true, include hidden files/folders (names starting with ".") '
+                  'in listings, search, grep, tree, and rename_batch. Defaults to false.',
+            },
+            'dry_run': {
+              'type': 'boolean',
+              'description':
+                  'If true, rename_batch previews changes without applying them. '
+                  'Defaults to false.',
+            },
+            'limit': {
+              'type': 'integer',
+              'description':
+                  'Maximum number of entries/matches for list, search, grep, and tree. '
+                  'Omit or set to 0 for no limit.',
+            },
+            'offset': {
+              'type': 'integer',
+              'description':
+                  'Byte offset for read (chunked reading) and write_bytes (patch position). '
+                  'Defaults to 0.',
+            },
+            'length': {
+              'type': 'integer',
+              'description':
+                  'Number of bytes to read for the read action. '
+                  'Defaults to 100000 (100 KB). Use with "offset" for chunked reading.',
+            },
+            'lines': {
+              'type': 'integer',
+              'description':
+                  'Number of lines to return for the tail action. Defaults to 50.',
+            },
+            'max_depth': {
+              'type': 'integer',
+              'description':
+                  'Maximum directory depth for the tree action. Defaults to 10.',
+            },
+          },
+          'required': ['action'],
+        },
+      ),
+      isSystemTool: true,
+    ),
+    McpServerTool(
+      serverName: _systemToolServerName,
+      tool: McpTool(
+        name: 'git_manager',
+        description:
+            'Full Git version control on the Android local file system via JGit. '
+            'Operates on the same files accessible through file_manager. '
+            'Supports all core Git operations.\n\n'
+            'Actions:\n'
+            '- **init**: Initialize a new Git repository.\n'
+            '- **clone**: Clone a remote repository (HTTPS). Pass "url", "path", '
+            'and optionally "username"/"password" for auth.\n'
+            '- **status**: Show working tree status (staged, unstaged, untracked, conflicts).\n'
+            '- **add**: Stage files. Use "filepattern" (default: "." for all).\n'
+            '- **remove**: Remove/unstage files. Set "cached"=true to unstage only.\n'
+            '- **commit**: Commit staged changes. Requires "message". Supports "amend".\n'
+            '- **log**: Show commit history. Use "max_count" (default: 20).\n'
+            '- **diff**: Show differences. Set "staged"=true for staged diff.\n'
+            '- **branch_list**: List branches. Set "all"=true to include remote branches.\n'
+            '- **branch_create**: Create a branch. Pass "name", optionally "start_point".\n'
+            '- **branch_delete**: Delete a branch. Set "force"=true for unmerged branches.\n'
+            '- **branch_rename**: Rename a branch. Pass "old_name" and "new_name".\n'
+            '- **checkout**: Switch branches or restore files. Set "create_branch"=true '
+            'to create and switch.\n'
+            '- **merge**: Merge a branch into current. Pass "branch".\n'
+            '- **pull**: Pull from remote. Pass "remote" (default: origin), "branch".\n'
+            '- **push**: Push to remote. Supports "force", "tags".\n'
+            '- **remote_list**: List configured remotes.\n'
+            '- **remote_add**: Add a remote. Pass "name" and "url".\n'
+            '- **remote_remove**: Remove a remote.\n'
+            '- **stash_create**: Stash changes. Pass "message", "include_untracked".\n'
+            '- **stash_list**: List all stashes.\n'
+            '- **stash_apply**: Apply a stash. Set "drop"=true to pop.\n'
+            '- **stash_drop**: Drop a stash.\n'
+            '- **tag_list**: List tags.\n'
+            '- **tag_create**: Create a tag. Pass "message" for annotated tag.\n'
+            '- **tag_delete**: Delete a tag.\n'
+            '- **reset**: Reset HEAD. Use "mode" (soft/mixed/hard) and "ref".\n'
+            '- **clean**: Remove untracked files. Set "force", "directories", "dry_run".\n\n'
+            'All actions require "path" pointing to the repository root '
+            '(the directory containing .git). Use file_manager to browse the file system '
+            'first if needed.',
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'action': {
+              'type': 'string',
+              'enum': [
+                'init', 'clone', 'status', 'add', 'remove',
+                'commit', 'log', 'diff',
+                'branch_list', 'branch_create', 'branch_delete', 'branch_rename',
+                'checkout', 'merge', 'pull', 'push',
+                'remote_list', 'remote_add', 'remote_remove',
+                'stash_create', 'stash_list', 'stash_apply', 'stash_drop',
+                'tag_list', 'tag_create', 'tag_delete',
+                'reset', 'clean',
+              ],
+              'description': 'The Git operation to perform.',
+            },
+            'path': {
+              'type': 'string',
+              'description':
+                  'Absolute path to the repository root directory (containing .git). '
+                  'Required for all actions.',
+            },
+            'url': {
+              'type': 'string',
+              'description':
+                  'Remote repository URL for clone and remote_add '
+                  '(e.g. "https://github.com/user/repo.git").',
+            },
+            'branch': {
+              'type': 'string',
+              'description':
+                  'Branch name for clone, merge, pull, and push.',
+            },
+            'name': {
+              'type': 'string',
+              'description':
+                  'Name for branch_create, branch_delete, checkout, '
+                  'remote_add/remove, tag_create/delete.',
+            },
+            'old_name': {
+              'type': 'string',
+              'description': 'Old branch name for branch_rename.',
+            },
+            'new_name': {
+              'type': 'string',
+              'description': 'New branch name for branch_rename.',
+            },
+            'message': {
+              'type': 'string',
+              'description':
+                  'Commit message for commit, stash message for stash_create, '
+                  'annotation for tag_create.',
+            },
+            'filepattern': {
+              'type': 'string',
+              'description':
+                  'File pattern for add and remove. '
+                  'Use "." to stage all. Defaults to "." for add.',
+            },
+            'remote': {
+              'type': 'string',
+              'description':
+                  'Remote name for pull and push. Defaults to "origin".',
+            },
+            'ref': {
+              'type': 'string',
+              'description':
+                  'Reference (commit hash/branch/tag) for reset. '
+                  'Defaults to "HEAD".',
+            },
+            'start_point': {
+              'type': 'string',
+              'description':
+                  'Starting commit/branch for branch_create.',
+            },
+            'stash_ref': {
+              'type': 'string',
+              'description':
+                  'Stash reference for stash_apply and stash_drop '
+                  '(e.g. "stash@{0}"). Defaults to latest.',
+            },
+            'mode': {
+              'type': 'string',
+              'enum': ['soft', 'mixed', 'hard'],
+              'description':
+                  'Reset mode. "soft" keeps staged, "mixed" unstages, '
+                  '"hard" discards all changes. Defaults to "mixed".',
+            },
+            'username': {
+              'type': 'string',
+              'description':
+                  'Username for HTTPS authentication (clone, pull, push).',
+            },
+            'password': {
+              'type': 'string',
+              'description':
+                  'Password or personal access token for HTTPS auth.',
+            },
+            'author_name': {
+              'type': 'string',
+              'description': 'Author name for commit.',
+            },
+            'author_email': {
+              'type': 'string',
+              'description': 'Author email for commit.',
+            },
+            'max_count': {
+              'type': 'integer',
+              'description': 'Maximum commits to show in log. Defaults to 20.',
+            },
+            'staged': {
+              'type': 'boolean',
+              'description': 'If true, diff shows staged changes vs HEAD.',
+            },
+            'cached': {
+              'type': 'boolean',
+              'description':
+                  'If true, remove only unstages (keeps file on disk).',
+            },
+            'amend': {
+              'type': 'boolean',
+              'description': 'If true, amend the last commit.',
+            },
+            'force': {
+              'type': 'boolean',
+              'description':
+                  'Force delete unmerged branches or force push.',
+            },
+            'bare': {
+              'type': 'boolean',
+              'description': 'Create a bare repository (init only).',
+            },
+            'all': {
+              'type': 'boolean',
+              'description':
+                  'Include remote branches in branch_list.',
+            },
+            'tags': {
+              'type': 'boolean',
+              'description': 'Push tags along with commits.',
+            },
+            'create_branch': {
+              'type': 'boolean',
+              'description':
+                  'Create the branch if it doesn\'t exist (checkout -b).',
+            },
+            'include_untracked': {
+              'type': 'boolean',
+              'description': 'Include untracked files in stash.',
+            },
+            'directories': {
+              'type': 'boolean',
+              'description': 'Remove untracked directories too (clean).',
+            },
+            'dry_run': {
+              'type': 'boolean',
+              'description': 'Preview clean without removing files.',
+            },
+            'drop': {
+              'type': 'boolean',
+              'description':
+                  'Drop the stash after applying (stash pop).',
             },
           },
           'required': ['action'],
@@ -1532,6 +1896,67 @@ class ChatController extends ChangeNotifier {
         );
       case 'memory_manage':
         return _executeMemoryManage(args);
+      case 'file_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) {
+          return 'Error: "action" is required.';
+        }
+        return await FileSystemService.execute(
+          action: action,
+          path: args['path'] as String?,
+          destination: args['destination'] as String?,
+          content: args['content'] as String?,
+          pattern: args['pattern'] as String?,
+          replacement: args['replacement'] as String?,
+          algorithm: args['algorithm'] as String?,
+          includeFilter: args['include_filter'] as String?,
+          recursive: args['recursive'] as bool? ?? false,
+          showHidden: args['show_hidden'] as bool? ?? false,
+          dryRun: args['dry_run'] as bool? ?? false,
+          limit: args['limit'] as int?,
+          offset: args['offset'] as int?,
+          length: args['length'] as int?,
+          lines: args['lines'] as int?,
+          maxDepth: args['max_depth'] as int?,
+        );
+      case 'git_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) {
+          return 'Error: "action" is required.';
+        }
+        return await GitService.execute(
+          action: action,
+          path: args['path'] as String?,
+          url: args['url'] as String?,
+          branch: args['branch'] as String?,
+          name: args['name'] as String?,
+          oldName: args['old_name'] as String?,
+          newName: args['new_name'] as String?,
+          message: args['message'] as String?,
+          filepattern: args['filepattern'] as String?,
+          remote: args['remote'] as String?,
+          ref: args['ref'] as String?,
+          stashRef: args['stash_ref'] as String?,
+          mode: args['mode'] as String?,
+          authorName: args['author_name'] as String?,
+          authorEmail: args['author_email'] as String?,
+          username: args['username'] as String?,
+          password: args['password'] as String?,
+          startPoint: args['start_point'] as String?,
+          staged: args['staged'] as bool?,
+          cached: args['cached'] as bool?,
+          amend: args['amend'] as bool?,
+          force: args['force'] as bool?,
+          bare: args['bare'] as bool?,
+          all: args['all'] as bool?,
+          tags: args['tags'] as bool?,
+          createBranch: args['create_branch'] as bool?,
+          includeUntracked: args['include_untracked'] as bool?,
+          directories: args['directories'] as bool?,
+          dryRun: args['dry_run'] as bool?,
+          drop: args['drop'] as bool?,
+          maxCount: args['max_count'] as int?,
+        );
       case 'delegate_to_agent':
         return await _executeDelegateToAgent(args, toolCallId: toolCallId);
       default:

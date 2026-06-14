@@ -8,6 +8,8 @@ import '../services/lua_executor.dart';
 import '../services/memory_service.dart';
 import '../services/notification_service.dart';
 import '../services/rest_client_service.dart';
+import '../services/file_system_service.dart';
+import '../services/git_service.dart';
 import '../services/ssh_service.dart';
 import '../services/web_search_service.dart';
 import '../services/web_crawler.dart';
@@ -401,6 +403,63 @@ class AgentExecutor {
         );
       case 'memory_manage':
         return _executeMemoryManage(args);
+      case 'file_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) return 'Error: "action" is required.';
+        return await FileSystemService.execute(
+          action: action,
+          path: args['path'] as String?,
+          destination: args['destination'] as String?,
+          content: args['content'] as String?,
+          pattern: args['pattern'] as String?,
+          replacement: args['replacement'] as String?,
+          algorithm: args['algorithm'] as String?,
+          includeFilter: args['include_filter'] as String?,
+          recursive: args['recursive'] as bool? ?? false,
+          showHidden: args['show_hidden'] as bool? ?? false,
+          dryRun: args['dry_run'] as bool? ?? false,
+          limit: args['limit'] as int?,
+          offset: args['offset'] as int?,
+          length: args['length'] as int?,
+          lines: args['lines'] as int?,
+          maxDepth: args['max_depth'] as int?,
+        );
+      case 'git_manager':
+        final action = args['action'] as String? ?? '';
+        if (action.trim().isEmpty) return 'Error: "action" is required.';
+        return await GitService.execute(
+          action: action,
+          path: args['path'] as String?,
+          url: args['url'] as String?,
+          branch: args['branch'] as String?,
+          name: args['name'] as String?,
+          oldName: args['old_name'] as String?,
+          newName: args['new_name'] as String?,
+          message: args['message'] as String?,
+          filepattern: args['filepattern'] as String?,
+          remote: args['remote'] as String?,
+          ref: args['ref'] as String?,
+          stashRef: args['stash_ref'] as String?,
+          mode: args['mode'] as String?,
+          authorName: args['author_name'] as String?,
+          authorEmail: args['author_email'] as String?,
+          username: args['username'] as String?,
+          password: args['password'] as String?,
+          startPoint: args['start_point'] as String?,
+          staged: args['staged'] as bool?,
+          cached: args['cached'] as bool?,
+          amend: args['amend'] as bool?,
+          force: args['force'] as bool?,
+          bare: args['bare'] as bool?,
+          all: args['all'] as bool?,
+          tags: args['tags'] as bool?,
+          createBranch: args['create_branch'] as bool?,
+          includeUntracked: args['include_untracked'] as bool?,
+          directories: args['directories'] as bool?,
+          dryRun: args['dry_run'] as bool?,
+          drop: args['drop'] as bool?,
+          maxCount: args['max_count'] as int?,
+        );
       default:
         return "Error: Unknown system tool '$toolName'";
     }

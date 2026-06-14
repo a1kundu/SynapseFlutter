@@ -649,6 +649,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return Icons.code;
       case LlmProvider.openRouter:
         return Icons.hub_outlined;
+      case LlmProvider.nvidia:
+        return Icons.memory_outlined;
+      case LlmProvider.huggingFace:
+        return Icons.emoji_nature_outlined;
     }
   }
 }

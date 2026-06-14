@@ -281,6 +281,12 @@ class LlmApiClient {
         headers['Accept'] = 'application/vnd.github+json';
         headers['X-GitHub-Api-Version'] = '2026-03-10';
         break;
+      case LlmProvider.nvidia:
+        headers['Accept'] = 'application/json';
+        break;
+      case LlmProvider.huggingFace:
+        headers['Accept'] = 'application/json';
+        break;
       case LlmProvider.openai:
         break;
     }
@@ -327,6 +333,13 @@ class LlmApiClient {
     if (lower.contains('meta')) return 'Meta';
     if (lower.contains('mistral')) return 'Mistral';
     if (lower.contains('github')) return 'GitHub';
+    if (lower.contains('nvidia')) return 'NVIDIA';
+    if (lower.contains('hugging') || lower.contains('hf')) {
+      return 'Hugging Face';
+    }
+    if (lower.contains('deepseek')) return 'DeepSeek';
+    if (lower.contains('qwen')) return 'Qwen';
+    if (lower.contains('microsoft')) return 'Microsoft';
     return ownedBy[0].toUpperCase() + ownedBy.substring(1);
   }
 

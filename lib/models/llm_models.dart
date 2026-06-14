@@ -2,7 +2,9 @@
 enum LlmProvider {
   openai('OpenAI', 'https://api.openai.com/v1'),
   openRouter('OpenRouter', 'https://openrouter.ai/api/v1'),
-  githubModels('GitHub Models', 'https://models.github.ai');
+  githubModels('GitHub Models', 'https://models.github.ai'),
+  nvidia('NVIDIA', 'https://integrate.api.nvidia.com/v1'),
+  huggingFace('Hugging Face', 'https://api-inference.huggingface.co/v1');
 
   final String displayName;
   final String defaultBaseUrl;
